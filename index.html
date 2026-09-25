@@ -379,7 +379,7 @@
 
   const TOOLS = [
     {id:'arrows', label:'スキル選択', icon:'🏹'},
-    {id:'fishing', label:'未定', icon:'🎣', comingSoon:true},
+    {id:'fishing', label:'釣り', icon:'🎣'},
   ];
 
   let settings = loadJSON('at2_settings_v3', DEFAULT_SETTINGS);
@@ -499,6 +499,48 @@
       b[k] = Object.prototype.hasOwnProperty.call(d,k) ? d[k] : DEFAULT_BUILD[k];
     });
   }
+
+  // ---------- 釣り堀データ ----------
+  const FISHING_MODES = {
+    normal: { label:'通常ステージ', comp:{rare:30, epic:9, legend:1} },
+    last:   { label:'ラストステージ', comp:{rare:60, epic:18, legend:2} },
+  };
+  const FISHING_QUALITIES = [
+    {key:'rare', label:'レア', color:'var(--cyan)'},
+    {key:'epic', label:'エピック', color:'var(--gold-soft)'},
+    {key:'legend', label:'レジェンド', color:'var(--gold)'},
+  ];
+  function freshPond(modeId){
+    const c = FISHING_MODES[modeId].comp;
+    return {rare:c.rare, epic:c.epic, legend:c.legend};
+  }
+  const DEFAULT_FISHING = {
+    mode:'normal',
+    pond: { normal:freshPond('normal'), last:freshPond('last') },
+    lifetime: { normal:{rare:0,epic:0,legend:0}, last:{rare:0,epic:0,legend:0} },
+  };
+  function sanitizeFishing(f){
+    if(!f || typeof f!=='object') f = {};
+    const out = JSON.parse(JSON.stringify(DEFAULT_FISHING));
+    if(f.mode==='normal' || f.mode==='last') out.mode = f.mode;
+    ['normal','last'].forEach(function(m){
+      const comp = FISHING_MODES[m].comp;
+      const p = (f.pond && f.pond[m]) || {};
+      ['rare','epic','legend'].forEach(function(q){
+        let v = Number(p[q]);
+        if(!Number.isFinite(v)) v = comp[q];
+        out.pond[m][q] = Math.max(0, Math.min(comp[q], v));
+      });
+      const lt = (f.lifetime && f.lifetime[m]) || {};
+      ['rare','epic','legend'].forEach(function(q){
+        let v = Number(lt[q]);
+        out.lifetime[m][q] = Number.isFinite(v) && v>=0 ? v : 0;
+      });
+    });
+    return out;
+  }
+  let fishing = sanitizeFishing(loadJSON('at2_fishing_v1', DEFAULT_FISHING));
+  function saveFishing(){ saveJSON('at2_fishing_v1', fishing); }
 
   let presets = loadPresets();
   // 起動時に必ずクラウドの最新プリセットを取得する（コード入力不要・全端末共通）
@@ -1452,12 +1494,59 @@
   }
 
   function fishingTool(){
+    const mode = fishing.mode;
+    const pond = fishing.pond[mode];
+    const lifetime = fishing.lifetime[mode];
+    const totalMax = FISHING_QUALITIES.reduce((s,q)=>s+FISHING_MODES[mode].comp[q.key],0);
+    const totalNow = FISHING_QUALITIES.reduce((s,q)=>s+pond[q.key],0);
+
     return `
     <div class="at-panel">
-      <div class="at-empty">
-        <div class="at-empty-icon">🎣</div>
-        「未定」ツールは準備中です。<br>内容が決まり次第、追加されます。
+      <div class="at-panel-title">🎣 釣り堀トラッカー</div>
+      <div class="at-panel-desc">釣った魚のレアリティを記録し、釣り堀に今どの品質の魚が何匹残っているかを把握するツールです。魚を釣ったら「－」を押して減らしてください。残り0になると自動的に補充されてリセットされます。</div>
+
+      <div class="at-tabs" style="margin:0 0 14px;">
+        ${Object.keys(FISHING_MODES).map(function(m){
+          return `<div class="at-tab ${mode===m?'active':''}" data-action="setFishingMode" data-val="${m}">${FISHING_MODES[m].label}</div>`;
+        }).join('')}
       </div>
+
+      <div class="at-subbox">
+        <div class="at-subbox-title">🐟 釣り堀の残り：${totalNow} / ${totalMax}匹</div>
+        <div class="at-statgrid">
+          ${FISHING_QUALITIES.map(function(q){
+            return `
+            <div class="at-statbox">
+              <div class="at-statbox-label">${q.label}</div>
+              <div class="at-statbox-val" style="color:${q.color};">${pond[q.key]}<span style="color:var(--text-faint);font-size:11px;"> / ${FISHING_MODES[mode].comp[q.key]}</span></div>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>
+
+      <div class="at-field">
+        <label class="at-label">魚を釣った（レアリティを選択）</label>
+        ${FISHING_QUALITIES.map(function(q){
+          const disabled = pond[q.key] <= 0;
+          return `
+          <div class="at-checkrow" style="cursor:default;">
+            <div class="at-checkrow-main">
+              <div class="at-checkrow-label" style="color:${q.color};">${q.label}</div>
+              <div class="at-checkrow-sub">残り ${pond[q.key]}匹　／　通算 ${lifetime[q.key]}匹 釣った</div>
+            </div>
+            <div class="at-stepper">
+              <div class="at-stepper-btn" data-action="undoFish" data-val="${q.key}" title="1匹戻す">＋</div>
+              <div class="at-stepper-btn" data-action="catchFish" data-val="${q.key}" style="${disabled?'opacity:.35;pointer-events:none;':''}" title="1匹釣った">－</div>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+
+      <div class="at-note">
+        現在のモード：<b>${FISHING_MODES[mode].label}</b>（全${totalMax}匹：レア${FISHING_MODES[mode].comp.rare}・エピック${FISHING_MODES[mode].comp.epic}・レジェンド${FISHING_MODES[mode].comp.legend}）。「－」で1匹釣った記録、「＋」で直前の記録を1匹分戻せます。残りが0匹になった時点で自動的に全${totalMax}匹に補充されます。
+      </div>
+
+      <div class="at-btn at-btn-ghost at-btn-full" style="margin-top:10px;" data-action="resetFishingPond">この釣り堀を今すぐ補充してリセット</div>
     </div>`;
   }
 
@@ -1512,16 +1601,29 @@
 
   function fishingSettingsBody(){
     return `
-        <div class="at-empty" style="padding:30px 12px;">
-          <div class="at-empty-icon">🎣</div>
-          「未定」ツールは準備中のため、設定項目はまだありません。<br>内容が決まり次第、ここに追加されます。
-        </div>
+        <div class="at-panel-desc">釣り堀の内訳（固定値）と、通算で釣った匹数の記録です。通算記録をリセットしたい場合は下のボタンを使ってください（釣り堀の残り匹数はリセットされません）。</div>
+        ${Object.keys(FISHING_MODES).map(function(m){
+          const comp = FISHING_MODES[m].comp;
+          const total = comp.rare+comp.epic+comp.legend;
+          const lt = fishing.lifetime[m];
+          return `
+          <div class="at-subbox">
+            <div class="at-subbox-title">🎣 ${FISHING_MODES[m].label}（全${total}匹）</div>
+            <div class="at-hint" style="margin-bottom:8px;">内訳：レア${comp.rare}・エピック${comp.epic}・レジェンド${comp.legend}</div>
+            <div class="at-statgrid">
+              <div class="at-statbox"><div class="at-statbox-label">レア通算</div><div class="at-statbox-val">${lt.rare}</div></div>
+              <div class="at-statbox"><div class="at-statbox-label">エピック通算</div><div class="at-statbox-val">${lt.epic}</div></div>
+              <div class="at-statbox"><div class="at-statbox-label">レジェ通算</div><div class="at-statbox-val">${lt.legend}</div></div>
+            </div>
+          </div>`;
+        }).join('')}
+        <div class="at-btn at-btn-danger at-btn-full" data-action="resetFishingLifetime">通算記録をリセット</div>
     `;
   }
 
   const SETTINGS_BY_TAB = {
     arrows: { title:'⚙️ スキル選択 詳細設定', body: arrowsSettingsBody },
-    fishing: { title:'⚙️ 未定 詳細設定', body: fishingSettingsBody },
+    fishing: { title:'⚙️ 釣り 詳細設定', body: fishingSettingsBody },
   };
 
   function settingsModal(){
@@ -1725,6 +1827,56 @@
       setCount(val, Math.max(0, getCount(val) - 1));
       saveBuild();
       render();
+      return;
+    }
+    if(action==='setFishingMode'){
+      if(FISHING_MODES[val]) fishing.mode = val;
+      saveFishing();
+      render();
+      return;
+    }
+    if(action==='catchFish'){
+      const mode = fishing.mode;
+      const pond = fishing.pond[mode];
+      if(pond[val] > 0){
+        pond[val]--;
+        fishing.lifetime[mode][val]++;
+        const remaining = pond.rare + pond.epic + pond.legend;
+        if(remaining <= 0){
+          fishing.pond[mode] = freshPond(mode);
+          showToast('釣り堀が補充されました！');
+        }
+        saveFishing();
+      }
+      render();
+      return;
+    }
+    if(action==='undoFish'){
+      const mode = fishing.mode;
+      const pond = fishing.pond[mode];
+      const cap = FISHING_MODES[mode].comp[val];
+      if(fishing.lifetime[mode][val] > 0 && pond[val] < cap){
+        pond[val]++;
+        fishing.lifetime[mode][val]--;
+        saveFishing();
+        render();
+      }
+      return;
+    }
+    if(action==='resetFishingPond'){
+      fishing.pond[fishing.mode] = freshPond(fishing.mode);
+      saveFishing();
+      showToast('釣り堀をリセットしました');
+      render();
+      return;
+    }
+    if(action==='resetFishingLifetime'){
+      if(confirm('通算で釣った匹数の記録をリセットします。よろしいですか？')){
+        fishing.lifetime = { normal:{rare:0,epic:0,legend:0}, last:{rare:0,epic:0,legend:0} };
+        saveFishing();
+        showToast('通算記録をリセットしました');
+        render();
+      }
       return;
     }
     if(action==='openSettings'){ state.settingsOpen = true; render(); return; }
