@@ -27,6 +27,8 @@
     --text-faint:#5a6178;
     --up:#4fbf6a;
     --down:#e0555a;
+    --rare-blue:#4a90e2;
+    --epic-purple:#a06be0;
   }
   *{box-sizing:border-box;}
   #at-root{
@@ -506,8 +508,8 @@
     last:   { label:'ラストステージ', comp:{rare:60, epic:18, legend:2} },
   };
   const FISHING_QUALITIES = [
-    {key:'rare', label:'レア', color:'var(--cyan)'},
-    {key:'epic', label:'エピック', color:'var(--gold-soft)'},
+    {key:'rare', label:'レア', color:'var(--rare-blue)'},
+    {key:'epic', label:'エピック', color:'var(--epic-purple)'},
     {key:'legend', label:'レジェンド', color:'var(--gold)'},
   ];
   function freshPond(modeId){
@@ -1503,7 +1505,7 @@
     return `
     <div class="at-panel">
       <div class="at-panel-title">🎣 釣り堀トラッカー</div>
-      <div class="at-panel-desc">釣った魚のレアリティを記録し、釣り堀に今どの品質の魚が何匹残っているかを把握するツールです。魚を釣ったら「－」を押して減らしてください。残り0になると自動的に補充されてリセットされます。</div>
+      <div class="at-panel-desc">釣った魚のレアリティを記録し、釣り堀に今どの品質の魚が何匹残っているかを把握するツールです。魚を釣ったら「🎣 釣った」を押して減らしてください。残り0になると自動的に補充されてリセットされます。</div>
 
       <div class="at-tabs" style="margin:0 0 14px;">
         ${Object.keys(FISHING_MODES).map(function(m){
@@ -1528,22 +1530,23 @@
         <label class="at-label">魚を釣った（レアリティを選択）</label>
         ${FISHING_QUALITIES.map(function(q){
           const disabled = pond[q.key] <= 0;
+          const canUndo = lifetime[q.key] > 0 && pond[q.key] < FISHING_MODES[mode].comp[q.key];
           return `
-          <div class="at-checkrow" style="cursor:default;">
+          <div class="at-checkrow" style="cursor:default;flex-wrap:wrap;">
             <div class="at-checkrow-main">
               <div class="at-checkrow-label" style="color:${q.color};">${q.label}</div>
               <div class="at-checkrow-sub">残り ${pond[q.key]}匹　／　通算 ${lifetime[q.key]}匹 釣った</div>
             </div>
-            <div class="at-stepper">
-              <div class="at-stepper-btn" data-action="undoFish" data-val="${q.key}" title="1匹戻す">＋</div>
-              <div class="at-stepper-btn" data-action="catchFish" data-val="${q.key}" style="${disabled?'opacity:.35;pointer-events:none;':''}" title="1匹釣った">－</div>
+            <div style="display:flex;gap:6px;flex:0 0 auto;">
+              <div class="at-btn at-btn-ghost at-btn-sm" data-action="undoFish" data-val="${q.key}" style="${canUndo?'':'opacity:.35;pointer-events:none;'}" title="直前の記録を1匹分取り消す">↩ 取消</div>
+              <div class="at-btn at-btn-sm" data-action="catchFish" data-val="${q.key}" style="${disabled?'opacity:.35;pointer-events:none;':`border-color:${q.color};color:${q.color};`}" title="この魚を1匹釣った">🎣 釣った</div>
             </div>
           </div>`;
         }).join('')}
       </div>
 
       <div class="at-note">
-        現在のモード：<b>${FISHING_MODES[mode].label}</b>（全${totalMax}匹：レア${FISHING_MODES[mode].comp.rare}・エピック${FISHING_MODES[mode].comp.epic}・レジェンド${FISHING_MODES[mode].comp.legend}）。「－」で1匹釣った記録、「＋」で直前の記録を1匹分戻せます。残りが0匹になった時点で自動的に全${totalMax}匹に補充されます。
+        現在のモード：<b>${FISHING_MODES[mode].label}</b>（全${totalMax}匹：レア${FISHING_MODES[mode].comp.rare}・エピック${FISHING_MODES[mode].comp.epic}・レジェンド${FISHING_MODES[mode].comp.legend}）。「🎣 釣った」で1匹釣った記録、「↩ 取消」で直前の記録を1匹分取り消せます。残りが0匹になった時点で自動的に全${totalMax}匹に補充されます。
       </div>
 
       <div class="at-btn at-btn-ghost at-btn-full" style="margin-top:10px;" data-action="resetFishingPond">この釣り堀を今すぐ補充してリセット</div>
