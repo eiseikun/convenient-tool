@@ -486,6 +486,7 @@
     chipImportDate:null,
     chipPaste:'',
     chipReplace:false,
+    chipImportResult:null,    // 直近の取り込み結果（管理者画面に表示し続ける）
     chipManageDate:null,
   };
   let toastMsg = null, toastTimer = null;
@@ -784,24 +785,24 @@
 
   // 「名前,枚数,名前,枚数,…」（カンマ・読点・改行区切り）を解析
   function parseChipPaste(text){
-    const tokens = String(text || '').split(/[,，、\n\r\t]+/).map(function(t){ return t.trim(); }).filter(Boolean);
+    const tokens = String(text || '').replace(/[\u200b-\u200d\u2060\ufeff]/g, '').split(/[,，、､\n\r\t]+/).map(function(t){ return t.trim(); }).filter(Boolean);
     const rows = [];
     let bad = 0;
+    const badTokens = [];
     for(let i = 0; i < tokens.length;){
       const name = tokens[i];
-      const next = i + 1 < tokens.length
-        ? tokens[i+1].replace(/[０-９]/g, function(c){ return String.fromCharCode(c.charCodeAt(0) - 0xFEE0); })
-        : '';
-      const m = /^(\d+)\s*(枚|個)?$/.exec(next);
+      const next = i + 1 < tokens.length ? tokens[i+1].normalize('NFKC') : '';
+      const m = /^[x×*]?\s*(\d+)\s*(枚|個|こ)?$/i.exec(next);
       if(m && !/^[0-9０-９]+$/.test(name)){
         rows.push({name: name, count: parseInt(m[1], 10)});
         i += 2;
       } else {
         bad++;
+        badTokens.push(name);
         i += 1;
       }
     }
-    return {rows: rows, bad: bad};
+    return {rows: rows, bad: bad, badTokens: badTokens};
   }
 
   function chipDates(){
@@ -1826,7 +1827,6 @@
     const date = state.chipDate || chipLatestDate();
     const list = chipDayList(date);
     const total = sumValues(list);
-    const top = list.length ? list[0] : null;
     return `
       <div class="at-chip-nav">
         <div class="at-btn at-btn-ghost at-btn-sm" data-action="chipDayShift" data-val="-1">‹ 前日</div>
@@ -1837,8 +1837,7 @@
       ${list.length ? `
         ${chipHero('この日の合計寄贈チップ', total, [
           `<span>寄贈人数 <b>${list.length}</b>人</span>`,
-          `<span>平均 <b>${fmtInt(Math.round(total / list.length * 10) / 10)}</b>枚</span>`,
-          top ? `<span>最多 <b>${escapeHtml(top.name)}</b> ${fmtInt(top.value)}枚</span>` : ''
+          `<span>平均 <b>${fmtInt(Math.round(total / list.length * 10) / 10)}</b>枚</span>`
         ])}
         <div class="at-subbox" style="margin-bottom:0;">
           <div class="at-subbox-title">🏆 寄贈ランキング（枚数順）</div>
@@ -2014,6 +2013,16 @@
           <div class="at-switch"></div>
         </div>
         <div class="at-btn at-btn-gold at-btn-full" data-action="chipImport">この内容で取り込む</div>
+        ${(function(){
+          const r = state.chipImportResult;
+          if(!r) return '';
+          const lines = [`<b style="color:var(--cyan);">${escapeHtml(fmtSlash(r.date))}：${r.people}人・合計${fmtInt(r.total)}枚を登録しました</b>`];
+          lines.push('登録した内容：' + r.registered.map(function(x){ return escapeHtml(x[0]) + ' ' + x[1]; }).join('、'));
+          if(r.converted.length) lines.push('旧名から変換：' + r.converted.map(function(c){ return escapeHtml(c.from) + ' → ' + escapeHtml(c.to); }).join('、'));
+          if(r.dupNames.length) lines.push('貼り付け内で重複（後の値を採用）：' + r.dupNames.map(escapeHtml).join('、'));
+          if(r.badTokens.length) lines.push(`<span style="color:var(--down);">読み取れなかった項目：${r.badTokens.map(escapeHtml).join('、')}</span>`);
+          return `<div class="at-note" style="margin-top:10px;">${lines.join('<br>')}</div>`;
+        })()}
       </div>
 
       <div class="at-subbox">
@@ -2278,17 +2287,19 @@
         const date = state.chipImportDate || todayStr();
         if(!isValidYMD(date)){ showToast('日付を選択してください'); return true; }
         const parsed = parseChipPaste(state.chipPaste);
-        // 旧名で入力された名前を、現在の名前に読み替える
-        let linked = 0;
-        parsed.rows.forEach(function(r){
-          const resolved = resolveChipName(r.name);
-          if(resolved !== r.name){ r.name = resolved; linked++; }
-        });
         if(!parsed.rows.length){ showToast('貼り付けた内容から読み取れませんでした（「名前,枚数,…」の形式をご確認ください）'); return true; }
-        // 同じ名前が複数回出てきた場合は、最後の値を採用する
+        // 貼り付け内で同じ名前が複数回出てきた場合は、最後の値を採用する
+        const rawMap = new Map();
+        const dupNames = [];
+        parsed.rows.forEach(function(r){ if(rawMap.has(r.name)) dupNames.push(r.name); rawMap.set(r.name, r.count); });
+        // 旧名は現在の名前に読み替える。別々の名前が同じ人に読み替えられた場合は枚数を合計する
         const byName = new Map();
-        let dup = 0;
-        parsed.rows.forEach(function(r){ if(byName.has(r.name)) dup++; byName.set(r.name, r.count); });
+        const converted = [];
+        rawMap.forEach(function(count, raw){
+          const name = resolveChipName(raw);
+          if(name !== raw) converted.push({from: raw, to: name});
+          byName.set(name, (byName.get(name) || 0) + count);
+        });
         if(state.chipReplace) chipEntries = chipEntries.filter(function(e){ return e.date !== date; });
         let total = 0;
         byName.forEach(function(count, name){
@@ -2301,12 +2312,14 @@
         state.chipDate = date;       // 取り込んだ日をそのまま表示できるように
         state.chipManageDate = date;
         render();
-        commitChipMonths([date.slice(0,7)]).then(function(ok){
-          const notes = [];
-          if(dup) notes.push('重複' + dup + '件は後の値を採用');
-          if(parsed.bad) notes.push('読み取れない項目' + parsed.bad + '件をスキップ');
-          if(linked) notes.push('旧名' + linked + '件を現在の名前に変換');
-          showToast(`${fmtSlash(date)}：${byName.size}人・合計${fmtInt(total)}枚を登録しました${notes.length ? '（' + notes.join('／') + '）' : ''}`);
+        state.chipImportResult = {
+          date: date, people: byName.size, total: total,
+          converted: converted, dupNames: dupNames, badTokens: parsed.badTokens,
+          registered: Array.from(byName.entries())
+        };
+        render();
+        commitChipMonths([date.slice(0,7)]).then(function(){
+          showToast(`${fmtSlash(date)}：${byName.size}人・合計${fmtInt(total)}枚を登録しました`);
         });
         return true;
       }
