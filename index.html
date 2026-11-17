@@ -1836,8 +1836,7 @@
       <div class="at-chip-datejp">${escapeHtml(fmtDateJP(date))}${date!==chipLatestDate() ? `　<span style="color:var(--cyan);cursor:pointer;" data-action="chipDayLatest">最新の日付へ</span>` : ''}</div>
       ${list.length ? `
         ${chipHero('この日の合計寄贈チップ', total, [
-          `<span>寄贈人数 <b>${list.length}</b>人</span>`,
-          `<span>平均 <b>${fmtInt(Math.round(total / list.length * 10) / 10)}</b>枚</span>`
+          `<span>寄贈人数 <b>${list.length}</b>人</span>`
         ])}
         <div class="at-subbox" style="margin-bottom:0;">
           <div class="at-subbox-title">🏆 寄贈ランキング（枚数順）</div>
@@ -1875,8 +1874,7 @@
         </div>
         ${list.length ? `
           ${chipHero('期間中の合計寄贈チップ', total, [
-            `<span>寄贈人数 <b>${list.length}</b>人</span>`,
-            `<span>1人平均 <b>${fmtInt(Math.round(total / list.length * 10) / 10)}</b>枚</span>`
+            `<span>寄贈人数 <b>${list.length}</b>人</span>`
           ])}
           ${chipRowsHtml(list, true)}`
         : chipEmpty('この期間の寄贈データはありません。')}
