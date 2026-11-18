@@ -227,7 +227,7 @@
     .at-statgrid4{grid-template-columns:1fr 1fr;}
   }
 
-  /* ---------- チップ寄贈ページ ---------- */
+  /* ---------- チップ寄付ページ ---------- */
   input[type="date"].at-input{color-scheme:dark;min-width:0;}
   .at-chip-nav{display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:center;margin-bottom:10px;}
   .at-chip-nav .at-btn{white-space:nowrap;}
@@ -393,7 +393,7 @@
   window.AT2Cloud.loadPresets = loadPresetsFromCloud;
   window.AT2Cloud.savePresets = savePresetsToCloud;
 
-  // ---------- チップ寄贈データ ----------
+  // ---------- チップ寄付データ ----------
   // 既存のプリセット同期と同じコレクション内に、月ごとのドキュメント（chips-m-YYYY-MM）と
   // 管理者設定ドキュメント（chips-settings）として保存する。全員で共有され、リアルタイムに反映される。
   const CHIP_MONTH_PREFIX = 'chips-m-';
@@ -548,7 +548,7 @@
 
   const TOOLS = [
     {id:'arrows', label:'スキル選択', icon:'🏹'},
-    {id:'chips', label:'チップ寄贈', icon:'🛩️'},
+    {id:'chips', label:'チップ寄付', icon:'🛩️'},
   ];
 
   let settings = loadJSON('at2_settings_v3', DEFAULT_SETTINGS);
@@ -557,7 +557,7 @@
   saveJSON('at2_settings_v3', settings);
   let build = loadJSON('at2_build_v3', DEFAULT_BUILD);
   let state = {
-    // メインはチップ寄贈。スキル選択（個人ページ）はログイン済みの場合のみ開ける
+    // メインはチップ寄付。スキル選択（個人ページ）はログイン済みの場合のみ開ける
     tab: (function(){ var t = localStorage.getItem('at2_tab_v1'); return (t==='admin' || (t==='arrows' && isAuthed())) ? t : 'chips'; })(),
     loginError:'',
     chipHistory:null,         // 履歴を表示中の名前（null＝ランキング表示）
@@ -683,7 +683,7 @@
     });
   }
 
-  // ---------- チップ寄贈データ ----------
+  // ---------- チップ寄付データ ----------
   // entries: {id, date:'YYYY-MM-DD', name, count}（同じ日付・同じ名前は1件）
   const CHIP_CACHE_KEY = 'at2_chips_v1';
   let chipEntries = [];
@@ -875,6 +875,7 @@
   }
 
   // 「名前,枚数,名前,枚数,…」（カンマ・読点・改行区切り）を解析
+  const CHIP_MAX_PER_DAY = 3;   // 1日あたりの寄付枚数の上限（0枚＝寄付せず乗船）
   function parseChipPaste(text){
     const tokens = String(text || '').replace(/[\u200b-\u200d\u2060\ufeff]/g, '').split(/[,，、､\n\r\t]+/).map(function(t){ return t.trim(); }).filter(Boolean);
     const rows = [];
@@ -885,7 +886,14 @@
       const next = i + 1 < tokens.length ? tokens[i+1].normalize('NFKC') : '';
       const m = /^[x×*]?\s*(\d+)\s*(枚|個|こ)?$/i.exec(next);
       if(m && !/^[0-9０-９]+$/.test(name)){
-        rows.push({name: name, count: parseInt(m[1], 10)});
+        const cnt = parseInt(m[1], 10);
+        if(cnt > CHIP_MAX_PER_DAY){
+          // 1日の寄付は0〜3枚。範囲外は登録せず「読み取れなかった項目」として知らせる
+          bad++;
+          badTokens.push(name + ' ' + cnt + '枚');
+        } else {
+          rows.push({name: name, count: cnt});
+        }
         i += 2;
       } else {
         bad++;
@@ -947,7 +955,7 @@
     state.tab = id;
     state.chipHistory = null;
     state.loginError = '';
-    // ログイン前の「ゲート画面」は保存せず、次回はチップ寄贈から開く
+    // ログイン前の「ゲート画面」は保存せず、次回はチップ寄付から開く
     localStorage.setItem('at2_tab_v1', (id === 'arrows' && !isAuthed()) ? 'chips' : id);
     render();
   }
@@ -1402,7 +1410,7 @@
   // 右上のピルボタン（🔒＝個人ページ／⚙ 管理者）。個人ページ・管理者ページでは左に「戻る」を出す
   function tabsBar(){
     const t = state.tab;
-    const back = t !== 'chips' ? `<div class="at-pillbtn" data-action="setTab" data-val="chips">‹ チップ寄贈へ</div>` : '';
+    const back = t !== 'chips' ? `<div class="at-pillbtn" data-action="setTab" data-val="chips">‹ チップ寄付へ</div>` : '';
     let bar = `<div class="at-toprow">${back}
       <div class="at-toprow-right">
         <div class="at-pillbtn ghost ${t==='arrows'?'active':''}" data-action="setTab" data-val="arrows" title="個人ページ">🔒</div>
@@ -1973,12 +1981,13 @@
       <div class="at-chip-capture" id="at-chip-capture">
         <div class="at-chip-cap-head">
           <div class="at-chip-cap-eyebrow">CLAN AIRSHIP — CHIP DONATION</div>
-          <div class="at-chip-cap-title">飛行艇チップ 寄贈ランキング</div>
+          <div class="at-chip-cap-title">飛行艇チップ 寄付枚数</div>
           <div class="at-chip-cap-range">${escapeHtml(rangeLabel)}</div>
         </div>
         ${list.length ? `
           ${chipHero(heroLabel, sumValues(list), [
-            `<span>寄贈人数 <b>${list.length}</b>人</span>`
+            `<span>乗船 <b>${list.length}</b>人</span>`,
+            `<span>寄付 <b>${list.filter(function(x){ return x.value > 0; }).length}</b>人</span>`
           ])}
           ${chipRowsHtml(list, showDays)}`
         : chipEmpty(emptyMsg)}
@@ -1988,7 +1997,7 @@
   function chipsDayView(){
     const dates = chipDates().slice().reverse();
     if(!dates.length){
-      return chipEmpty('まだ寄贈データが登録されていません。<br>右上の「⚙ 管理者」からデータを取り込んでください。');
+      return chipEmpty('まだ寄付データが登録されていません。<br>右上の「⚙ 管理者」からデータを取り込んでください。');
     }
     const date = chipSelectedDate();
     const list = chipDayList(date);
@@ -1998,11 +2007,11 @@
           return `<div class="at-pill mono ${d===date?'active':''}" data-action="chipPickDate" data-val="${d}">${fmtMD(d)}</div>`;
         }).join('')}
       </div>
-      <div class="at-chip-note">日付を選ぶとその日のランキングを表示します。名前をタップすると日ごとの寄贈枚数の履歴を見られます。</div>
+      <div class="at-chip-note">日付を選ぶとその日のランキングを表示します。名前をタップすると日ごとの寄付枚数の履歴を見られます。</div>
       <div style="text-align:right;margin-bottom:10px;">
         <div class="at-btn at-btn-gold at-btn-sm" data-action="captureChips">📸 画像として保存</div>
       </div>
-      ${chipCaptureBlock(fmtDateJP(date), 'この日の合計寄贈チップ', list, false, 'この日の寄贈データはありません。')}
+      ${chipCaptureBlock(fmtDateJP(date), 'この日の合計寄付チップ', list, false, 'この日の寄付データはありません。')}
     `;
   }
 
@@ -2022,15 +2031,15 @@
         <div class="at-pill" data-action="chipRangePreset" data-val="month">今月</div>
         <div class="at-pill" data-action="chipRangePreset" data-val="all">全期間</div>
       </div>
-      <div class="at-chip-note">名前をタップすると日ごとの寄贈枚数の履歴を見られます。</div>
+      <div class="at-chip-note">名前をタップすると日ごとの寄付枚数の履歴を見られます。</div>
       <div style="text-align:right;margin-bottom:10px;">
         <div class="at-btn at-btn-gold at-btn-sm" data-action="captureChips">📸 画像として保存</div>
       </div>
-      ${chipCaptureBlock(rangeLabel, '期間中の合計寄贈チップ', list, true, 'この期間の寄贈データはありません。')}
+      ${chipCaptureBlock(rangeLabel, '期間中の合計寄付チップ', list, true, 'この期間の寄付データはありません。')}
     `;
   }
 
-  // 名前をタップしたときの「日ごとの寄贈枚数の履歴」（モーダルではなくページ内表示）
+  // 名前をタップしたときの「日ごとの寄付枚数の履歴」（モーダルではなくページ内表示）
   function chipHistoryPanel(){
     const name = state.chipHistory;
     const dates = chipDates().slice().reverse();
@@ -2057,11 +2066,11 @@
       <div style="margin-bottom:12px;"><div class="at-pillbtn" style="display:inline-flex;" data-action="chipHistoryBack">‹ ランキングへ戻る</div></div>
       <div class="at-panel-title" style="margin-bottom:6px;">📜 ${escapeHtml(name)} の履歴</div>
       ${formers.length ? `<div class="at-hint" style="margin:0 0 10px;">旧名：${formers.map(escapeHtml).join('、')}</div>` : ''}
-      ${chipHero('累計寄贈チップ', total, [
-        `<span>寄贈した日 <b>${days}</b>日</span>`,
+      ${chipHero('累計寄付チップ', total, [
+        `<span>乗船した日 <b>${days}</b>日</span>`,
         `<span>1日平均 <b>${days ? fmtInt(Math.round(total / days)) : 0}</b>枚</span>`
       ])}
-      <div class="at-hist-head"><div>日付</div><div style="text-align:center;">順位</div><div style="text-align:right;">寄贈枚数</div></div>
+      <div class="at-hist-head"><div>日付</div><div style="text-align:center;">順位</div><div style="text-align:right;">寄付枚数</div></div>
       ${rows || '<div class="at-hint" style="padding:16px 0;text-align:center;">データがありません</div>'}
     </div>`;
   }
@@ -2074,8 +2083,8 @@
       : (chipCloudStatus === 'ok' ? '☁️ データは全員で共有され、自動で更新されます' : '☁️ 同期中…');
     return `
     <div class="at-panel">
-      <div class="at-panel-title">🛩️ クラン飛行艇 チップ寄贈</div>
-      <div class="at-panel-desc">クラン飛行艇に寄贈されたチップの枚数を、日別・期間別に確認できます。データの登録は右上の「⚙ 管理者」から行います。</div>
+      <div class="at-panel-title">🛩️ クラン飛行艇 チップ寄付</div>
+      <div class="at-panel-desc">クラン飛行艇に寄付されたチップの枚数を、日別・期間別に確認できます。データの登録は右上の「⚙ 管理者」から行います。</div>
       <div class="at-chip-status ${chipCloudStatus==='error'?'err':''}">${statusText}</div>
       <div class="at-modebtns">
         <div class="at-modebtn ${sub==='day'?'active':''}" data-action="setChipSub" data-val="day">📅 日別</div>
@@ -2177,14 +2186,14 @@
     const entryRows = manageDate ? chipEntries.filter(function(e){ return e.date === manageDate; })
       .sort(function(a,b){ return b.count - a.count || a.name.localeCompare(b.name, 'ja'); }) : [];
     const secImport = `
-        <div class="at-panel-desc" style="margin-bottom:10px;">「名前,枚数,名前,枚数,…」の形式で貼り付けてください（改行区切りも可）。<br>例：<code>えいせい,3,にゃんこ船長,3,モジュ,2,大蒜マン,1</code><br>同じ日付・同じ名前のデータがある場合は、枚数を上書きします。</div>
+        <div class="at-panel-desc" style="margin-bottom:10px;">「名前,枚数,名前,枚数,…」の形式で貼り付けてください（改行区切りも可）。<br>例：<code>えいせい,3,にゃんこ船長,3,モジュ,2,大蒜マン,1,ぐんじ,0</code><br>枚数は0〜3です（0＝寄付せず乗船）。<br>同じ日付・同じ名前のデータがある場合は、枚数を上書きします。</div>
         <div class="at-field">
           <label class="at-label">日付</label>
           <input type="date" class="at-input" data-chip-date="import" value="${escapeHtml(importDate)}">
         </div>
         <div class="at-field">
           <label class="at-label">貼り付け</label>
-          <textarea class="at-input" rows="5" data-chip-paste placeholder="えいせい,3,にゃんこ船長,3,モジュ,2,大蒜マン,1">${escapeHtml(state.chipPaste)}</textarea>
+          <textarea class="at-input" rows="5" data-chip-paste placeholder="えいせい,3,にゃんこ船長,3,モジュ,2,大蒜マン,1,ぐんじ,0">${escapeHtml(state.chipPaste)}</textarea>
         </div>
         <div class="at-checkrow ${state.chipReplace?'on':''}" data-action="chipToggleReplace" style="margin-bottom:12px;">
           <div class="at-checkrow-main">
@@ -2201,7 +2210,7 @@
           lines.push('登録した内容：' + r.registered.map(function(x){ return escapeHtml(x[0]) + ' ' + x[1]; }).join('、'));
           if(r.converted.length) lines.push('旧名から変換：' + r.converted.map(function(c){ return escapeHtml(c.from) + ' → ' + escapeHtml(c.to); }).join('、'));
           if(r.dupNames.length) lines.push('貼り付け内で重複（後の値を採用）：' + r.dupNames.map(escapeHtml).join('、'));
-          if(r.badTokens.length) lines.push(`<span style="color:var(--down);">読み取れなかった項目：${r.badTokens.map(escapeHtml).join('、')}</span>`);
+          if(r.badTokens.length) lines.push(`<span style="color:var(--down);">読み取れなかった／範囲外（0〜3枚）の項目：${r.badTokens.map(escapeHtml).join('、')}</span>`);
           return `<div class="at-note" style="margin-top:10px;">${lines.join('<br>')}</div>`;
         })()}
     `;
@@ -2258,7 +2267,7 @@
     return `
       <div class="at-collapse">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
-          <div class="at-panel-title" style="margin:0;padding:0;border:none;">⚙ 管理者パネル（チップ寄贈）</div>
+          <div class="at-panel-title" style="margin:0;padding:0;border:none;">⚙ 管理者パネル（チップ寄付）</div>
           ${isAuthed() ? '<div class="at-btn at-btn-ghost at-btn-sm" data-action="logout">個人ページをログアウト</div>' : ''}
         </div>
         <div class="at-chip-status ${chipCloudStatus==='error'?'err':''}" style="margin:8px 0 0;">${chipCloudStatus==='error' ? '⚠ クラウドに接続できません' : (chipCloudStatus==='ok' ? '☁️ 変更は全員に共有されます' : '☁️ 同期中…')}</div>
@@ -2457,7 +2466,7 @@
     ` + settingsModal() + infoModal() + presetModal() + (toastMsg? `<div class="at-toast">${escapeHtml(toastMsg)}</div>` : '');
   }
 
-  // ---------- チップ寄贈ページのイベント ----------
+  // ---------- チップ寄付ページのイベント ----------
   function handleChipAction(action, val, el){
     switch(action){
       case 'setChipSub':
@@ -2508,7 +2517,7 @@
         const date = state.chipImportDate || todayStr();
         if(!isValidYMD(date)){ showToast('日付を選択してください'); return true; }
         const parsed = parseChipPaste(state.chipPaste);
-        if(!parsed.rows.length){ showToast('貼り付けた内容から読み取れませんでした（「名前,枚数,…」の形式をご確認ください）'); return true; }
+        if(!parsed.rows.length){ showToast('貼り付けた内容から読み取れませんでした（「名前,枚数,…」の形式と、枚数が0〜3であることをご確認ください）'); return true; }
         // 貼り付け内で同じ名前が複数回出てきた場合は、最後の値を採用する
         const rawMap = new Map();
         const dupNames = [];
@@ -2555,7 +2564,7 @@
       case 'chipDeleteDay': {
         const n = chipEntries.filter(function(e){ return e.date === val; }).length;
         if(!n) return true;
-        if(confirm(`${fmtDateJP(val)}の寄贈データ（${n}件）をすべて削除します。\nこの操作は取り消せません。よろしいですか？`)){
+        if(confirm(`${fmtDateJP(val)}の寄付データ（${n}件）をすべて削除します。\nこの操作は取り消せません。よろしいですか？`)){
           chipEntries = chipEntries.filter(function(e){ return e.date !== val; });
           state.chipManageDate = null;
           render();
