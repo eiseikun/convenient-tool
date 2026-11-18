@@ -252,8 +252,12 @@
   .at-chip-rank{flex:0 0 30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;
     font-family:'JetBrains Mono',monospace;font-weight:600;font-size:12px;background:transparent;color:var(--text-faint);}
   .at-chip-main{flex:1;min-width:0;}
-  .at-chip-name{font-size:14px;font-weight:600;color:var(--text-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-  .at-chip-bar{height:5px;border-radius:999px;background:var(--bg-panel3);margin-top:5px;overflow:hidden;}
+  .at-chip-name{font-size:14px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .at-chip-bar{height:7px;border-radius:999px;background:var(--bg-panel3);margin-top:5px;overflow:hidden;}
+  .at-chip-num{display:inline-block;padding:1px 7px;border-radius:8px;border:1.5px solid transparent;line-height:1.25;}
+  .at-chip-num.frame-gold{border-color:#e0bd4a;background:rgba(224,189,74,.16);color:#f4d874;}
+  .at-chip-num.frame-silver{border-color:#b9c2cf;background:rgba(185,194,207,.15);color:#e4e9ee;}
+  .at-chip-num.frame-bronze{border-color:#c17a4a;background:rgba(193,122,74,.16);color:#e8a878;}
   .at-chip-bar span{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,var(--banner-mid),var(--cyan));}
   .at-chip-val{flex:0 0 auto;text-align:right;font-family:'JetBrains Mono',monospace;font-weight:800;font-size:21px;color:var(--gold-soft);}
   .at-chip-val small{font-size:11px;color:var(--text-faint);margin-left:2px;}
@@ -318,6 +322,7 @@
   .at-chip-cols .at-chip-rank{flex:0 0 20px;height:24px;border-radius:6px;font-size:11px;}
   .at-chip-cols .at-chip-name{font-size:12.5px;}
   .at-chip-cols .at-chip-val{font-size:17px;}
+  .at-chip-cols .at-chip-num{padding:1px 5px;}
   .at-chip-cols .at-chip-val small{display:none;}
   .at-chip-cols .at-chip-days{font-size:9px;}
   .at-name-link{cursor:pointer;text-underline-offset:3px;text-decoration:underline dotted rgba(232,207,122,.4);}
@@ -2134,14 +2139,23 @@
     if(!list.length) return '';
     const max = Math.max(1, list[0].value);
     const row = function(it){
-      const w = Math.max(2, Math.round(it.value / max * 100));
+      const ratio = it.value / max;
+      const w = Math.max(2, Math.round(ratio * 100));
+      const idx = list.indexOf(it);
+      // 期間集計（showDays）は上位3人を金銀銅、日別は上限枚数（3枚）の人だけ金で囲む
+      let frame = '';
+      if(showDays){ if(idx < 3 && it.value > 0) frame = ['gold', 'silver', 'bronze'][idx]; }
+      else if(it.value >= CHIP_MAX_PER_DAY){ frame = 'gold'; }
+      // ゲージの色：少ない=青 → 多い=金 と、割合に応じて色相を変える
+      const hue = Math.round(205 - ratio * 160);
+      const barBg = `linear-gradient(90deg, hsl(${hue},70%,40%), hsl(${hue},85%,62%))`;
       return `<div class="at-chip-row">
-        <div class="at-chip-rank">${list.indexOf(it) + 1}</div>
+        <div class="at-chip-rank">${idx + 1}</div>
         <div class="at-chip-main" data-action="chipHistory" data-val="${escapeHtml(it.name)}">
           <div class="at-chip-name at-name-link">${escapeHtml(it.name)}</div>
-          <div class="at-chip-bar"><span style="width:${w}%"></span></div>
+          <div class="at-chip-bar"><span style="width:${w}%;background:${barBg}"></span></div>
         </div>
-        <div class="at-chip-val">${fmtInt(it.value)}<small>枚</small>${showDays ? `<div class="at-chip-days">${it.days}日</div>` : ''}</div>
+        <div class="at-chip-val"><span class="at-chip-num ${frame ? 'frame-' + frame : ''}">${fmtInt(it.value)}<small>枚</small></span>${showDays ? `<div class="at-chip-days">${it.days}日</div>` : ''}</div>
       </div>`;
     };
     const half = Math.ceil(list.length / 2);
