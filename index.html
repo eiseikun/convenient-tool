@@ -250,16 +250,12 @@
   .at-chip-row{display:flex;align-items:center;gap:10px;padding:9px 6px;border-bottom:1px solid var(--border-soft);}
   .at-chip-row:last-child{border-bottom:none;}
   .at-chip-rank{flex:0 0 30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;
-    font-family:'JetBrains Mono',monospace;font-weight:700;font-size:13px;background:var(--bg-panel2);color:var(--text-dim);}
-  .at-chip-row.r1 .at-chip-rank{background:linear-gradient(160deg,#f4d874,var(--gold));color:#2a2205;}
-  .at-chip-row.r2 .at-chip-rank{background:linear-gradient(160deg,#e4e9ee,#b9c2cf);color:#232830;}
-  .at-chip-row.r3 .at-chip-rank{background:linear-gradient(160deg,#e0a070,#c17a4a);color:#2a1608;}
+    font-family:'JetBrains Mono',monospace;font-weight:600;font-size:12px;background:transparent;color:var(--text-faint);}
   .at-chip-main{flex:1;min-width:0;}
-  .at-chip-name{font-size:14px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .at-chip-name{font-size:14px;font-weight:600;color:var(--text-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .at-chip-bar{height:5px;border-radius:999px;background:var(--bg-panel3);margin-top:5px;overflow:hidden;}
   .at-chip-bar span{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,var(--banner-mid),var(--cyan));}
-  .at-chip-row.r1 .at-chip-bar span{background:linear-gradient(90deg,var(--gold-dark),var(--gold-soft));}
-  .at-chip-val{flex:0 0 auto;text-align:right;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:17px;color:var(--gold-soft);}
+  .at-chip-val{flex:0 0 auto;text-align:right;font-family:'JetBrains Mono',monospace;font-weight:800;font-size:21px;color:var(--gold-soft);}
   .at-chip-val small{font-size:11px;color:var(--text-faint);margin-left:2px;}
   .at-chip-days{font-size:10px;color:var(--text-faint);font-weight:600;margin-top:1px;}
   .at-chip-former-row{flex:1 0 100%;display:flex;align-items:center;flex-wrap:wrap;gap:6px;padding:2px 0 4px 2px;}
@@ -319,9 +315,9 @@
   .at-chip-cols{display:grid;grid-template-columns:1fr 1fr;gap:0 12px;align-items:start;}
   .at-chip-col{min-width:0;}
   .at-chip-cols .at-chip-row{gap:7px;padding:7px 1px;}
-  .at-chip-cols .at-chip-rank{flex:0 0 24px;height:24px;border-radius:6px;font-size:11.5px;}
+  .at-chip-cols .at-chip-rank{flex:0 0 20px;height:24px;border-radius:6px;font-size:11px;}
   .at-chip-cols .at-chip-name{font-size:12.5px;}
-  .at-chip-cols .at-chip-val{font-size:13.5px;}
+  .at-chip-cols .at-chip-val{font-size:17px;}
   .at-chip-cols .at-chip-val small{display:none;}
   .at-chip-cols .at-chip-days{font-size:9px;}
   .at-name-link{cursor:pointer;text-underline-offset:3px;text-decoration:underline dotted rgba(232,207,122,.4);}
@@ -2139,8 +2135,8 @@
     const max = Math.max(1, list[0].value);
     const row = function(it){
       const w = Math.max(2, Math.round(it.value / max * 100));
-      return `<div class="at-chip-row ${it.rank<=3 ? 'r'+it.rank : ''}">
-        <div class="at-chip-rank">${it.rank}</div>
+      return `<div class="at-chip-row">
+        <div class="at-chip-rank">${list.indexOf(it) + 1}</div>
         <div class="at-chip-main" data-action="chipHistory" data-val="${escapeHtml(it.name)}">
           <div class="at-chip-name at-name-link">${escapeHtml(it.name)}</div>
           <div class="at-chip-bar"><span style="width:${w}%"></span></div>
