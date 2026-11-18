@@ -339,6 +339,40 @@
   .at-badge.r2{background:linear-gradient(160deg,#e4e9ee,#b9c2cf);color:#232830;}
   .at-badge.r3{background:linear-gradient(160deg,#e0a070,#c17a4a);color:#2a1608;}
   .at-hist-rankcell{text-align:center;}
+  /* ---------- 登録フォーム（カレンダー／手入力）・船長VIP ---------- */
+  .at-date-btn{background:var(--bg-panel2);border:1px solid var(--border);color:var(--text);padding:11px 12px;border-radius:8px;
+    font-size:13.5px;cursor:pointer;text-align:center;user-select:none;}
+  .at-date-btn.active{border-color:var(--gold);color:var(--gold-soft);}
+  .at-cal-panel{background:var(--bg-panel2);border:1px solid var(--border);border-radius:10px;padding:12px;margin:10px 0 6px;}
+  .at-cal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+  .at-cal-month{font-family:'Shippori Mincho',serif;font-weight:800;color:var(--gold-soft);font-size:14px;}
+  .at-cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;}
+  .at-cal-wd{text-align:center;font-size:10px;color:var(--text-faint);padding:4px 0;}
+  .at-cal-cell{text-align:center;padding:9px 0;border-radius:8px;font-size:12.5px;cursor:pointer;background:var(--bg-panel3);
+    font-family:'JetBrains Mono',monospace;position:relative;}
+  .at-cal-cell:hover{background:#2a3244;}
+  .at-cal-cell.has::after{content:"";position:absolute;bottom:3px;left:50%;width:4px;height:4px;margin-left:-2px;border-radius:50%;background:var(--cyan);}
+  .at-cal-cell.sel{background:linear-gradient(160deg,#f4d874,var(--gold));color:#241d05;font-weight:700;}
+  .at-cal-cell.sel.has::after{background:#241d05;}
+  .at-cal-cell.at-cal-empty{cursor:default;background:transparent;}
+  .at-sugs{display:flex;flex-wrap:wrap;gap:8px;}
+  .at-man-row{display:flex;align-items:center;gap:8px;padding:8px 2px;border-bottom:1px solid var(--border-soft);}
+  .at-man-row:last-child{border-bottom:none;}
+  .at-man-name{flex:1;min-width:0;font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .at-stepper{display:flex;align-items:center;gap:6px;flex:0 0 auto;}
+  .at-step-btn{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;
+    background:var(--bg-panel3);border:1px solid var(--border);color:var(--text);cursor:pointer;user-select:none;}
+  .at-step-btn:active{border-color:var(--gold);}
+  .at-step-btn.dis{opacity:.3;}
+  .at-step-val{min-width:34px;text-align:center;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:20px;color:var(--text-faint);cursor:pointer;user-select:none;}
+  .at-step-val.on{color:var(--gold-soft);}
+  .at-man-del{width:32px;height:40px;display:flex;align-items:center;justify-content:center;color:var(--text-faint);cursor:pointer;font-size:15px;flex:0 0 auto;}
+  .at-man-del:hover{color:var(--down);}
+  .at-roles{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 12px;}
+  .at-role{background:rgba(212,175,55,.07);border:1px solid rgba(212,175,55,.25);border-radius:10px;padding:8px 10px;min-width:0;}
+  .at-role-label{font-size:10.5px;color:var(--gold-soft);font-weight:700;letter-spacing:.06em;margin-bottom:3px;}
+  .at-role-name{font-size:13.5px;font-weight:700;color:var(--text);overflow-wrap:anywhere;}
+  .at-role-name small{font-size:10.5px;color:var(--text-faint);font-weight:500;}
   @media (max-width:400px){ .at-chip-hero-val{font-size:34px;} .at-chip-nav .at-btn{padding:6px 8px;} }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
@@ -401,20 +435,23 @@
   window.AT2Cloud.subscribeChips = function(onData, onError){
     return onSnapshot(collection(db, COLLECTION), function(snap){
       const months = {};
+      const rolesByMonth = {};
       let settings = null;
       snap.forEach(function(d){
         if(d.id.indexOf(CHIP_MONTH_PREFIX) === 0){
           const data = d.data();
-          months[d.id.slice(CHIP_MONTH_PREFIX.length)] = Array.isArray(data && data.list) ? data.list : [];
+          const mk = d.id.slice(CHIP_MONTH_PREFIX.length);
+          months[mk] = Array.isArray(data && data.list) ? data.list : [];
+          rolesByMonth[mk] = (data && data.roles && typeof data.roles === 'object') ? data.roles : {};
         } else if(d.id === CHIP_SETTINGS_ID){
           settings = d.data();
         }
       });
-      onData({months: months, settings: settings, fromCache: !!(snap.metadata && snap.metadata.fromCache)});
+      onData({months: months, roles: rolesByMonth, settings: settings, fromCache: !!(snap.metadata && snap.metadata.fromCache)});
     }, onError);
   };
-  window.AT2Cloud.saveChipMonth = function(monthKey, list){
-    return setDoc(doc(db, COLLECTION, CHIP_MONTH_PREFIX + monthKey), { list: list, updatedAt: serverTimestamp() });
+  window.AT2Cloud.saveChipMonth = function(monthKey, list, roles){
+    return setDoc(doc(db, COLLECTION, CHIP_MONTH_PREFIX + monthKey), { list: list, roles: roles || {}, updatedAt: serverTimestamp() });
   };
   window.AT2Cloud.deleteChipMonth = function(monthKey){
     return deleteDoc(doc(db, COLLECTION, CHIP_MONTH_PREFIX + monthKey));
@@ -561,6 +598,13 @@
     tab: (function(){ var t = localStorage.getItem('at2_tab_v1'); return (t==='admin' || (t==='arrows' && isAuthed())) ? t : 'chips'; })(),
     loginError:'',
     chipHistory:null,         // 履歴を表示中の名前（null＝ランキング表示）
+    chipRegMode:(function(){ try{ return localStorage.getItem('at2_chipregmode_v1') === 'manual' ? 'manual' : 'paste'; }catch(e){ return 'paste'; } })(),
+    chipRoleDraft:null,       // 船長・VIPの選択（null＝保存済み／前回の内容をそのまま使う）。日付を替えても保持
+    chipManualDraft:{},       // 手入力の下書き {日付: [{name,count}]}
+    chipSearch:'',
+    chipShowAll:false,
+    chipCalOpen:false,
+    chipCalMonth:null,
     chipScrollY:0,
     adminOpen:{import:true, manage:false, names:false},
     settingsOpen:false,
@@ -688,6 +732,7 @@
   const CHIP_CACHE_KEY = 'at2_chips_v1';
   let chipEntries = [];
   let chipNameLinks = {}; // {現在の名前: [旧名, ...]}  旧名で入力しても現在の名前として登録する
+  let chipRoles = {};     // {'YYYY-MM-DD': {captain:'名前', vip:'名前'}}  船長・VIP（寄付なしの特別枠）
   let chipCloudStatus = 'idle'; // idle | ok | error
   let chipRenderPending = false;
 
@@ -722,6 +767,17 @@
     if(!name || !isValidYMD(e.date) || !Number.isFinite(count) || count < 0) return null;
     return {id: e.id || uid(), date: e.date, name: name, count: Math.floor(count)};
   }
+  function sanitizeRoles(obj){
+    const out = {};
+    if(!obj || typeof obj !== 'object') return out;
+    Object.keys(obj).forEach(function(d){
+      if(!isValidYMD(d) || !obj[d] || typeof obj[d] !== 'object') return;
+      const c = String(obj[d].captain == null ? '' : obj[d].captain).trim();
+      const v = String(obj[d].vip == null ? '' : obj[d].vip).trim();
+      if(c || v){ out[d] = {}; if(c) out[d].captain = c; if(v) out[d].vip = v; }
+    });
+    return out;
+  }
   // クラウド／キャッシュの [{name, formers:[...]}] を {name: [...]} に整える
   function sanitizeNameLinks(arr){
     const out = {};
@@ -743,9 +799,18 @@
     }
     return n;
   }
+  function chipRoleNames(){
+    const set = new Set();
+    Object.keys(chipRoles).forEach(function(d){
+      if(chipRoles[d].captain) set.add(chipRoles[d].captain);
+      if(chipRoles[d].vip) set.add(chipRoles[d].vip);
+    });
+    return Array.from(set);
+  }
   function chipKnownNames(){
     const set = new Set(chipEntries.map(function(e){ return e.name; }));
     Object.keys(chipNameLinks).forEach(function(k){ set.add(k); });
+    chipRoleNames().forEach(function(n){ set.add(n); });
     return Array.from(set).sort(function(a,b){ return a.localeCompare(b, 'ja'); });
   }
   function saveChipLinks(){
@@ -791,6 +856,11 @@
     links[newName] = Array.from(new Set((links[newName] || []).concat(prior, [oldName])));
     delete links[oldName];
     Object.keys(links).forEach(function(k){ if(!links[k].length) delete links[k]; });
+    Object.keys(chipRoles).forEach(function(d){
+      ['captain', 'vip'].forEach(function(k){
+        if(chipRoles[d][k] === oldName){ chipRoles[d][k] = newName; months.add(d.slice(0,7)); }
+      });
+    });
     render();
     commitChipMonths(months).then(function(){ return saveChipLinks(); }).then(function(){
       showToast(`「${oldName}」を「${newName}」に変更しました${merged ? `（同じ日の記録${merged}件を合計）` : ''}`);
@@ -804,10 +874,11 @@
       const parsed = JSON.parse(raw);
       chipEntries = (parsed.entries || []).map(sanitizeChipEntry).filter(Boolean);
       chipNameLinks = sanitizeNameLinks(parsed.nameLinks);
+      chipRoles = sanitizeRoles(parsed.roles);
     }catch(e){}
   }
   function saveChipCache(){
-    try{ localStorage.setItem(CHIP_CACHE_KEY, JSON.stringify({entries: chipEntries, nameLinks: chipNameLinks})); }catch(e){}
+    try{ localStorage.setItem(CHIP_CACHE_KEY, JSON.stringify({entries: chipEntries, nameLinks: chipNameLinks, roles: chipRoles})); }catch(e){}
   }
   loadChipCache();
 
@@ -834,6 +905,9 @@
           });
         });
         chipEntries = merged;
+        const mergedRoles = {};
+        Object.keys(data.roles || {}).forEach(function(k){ Object.assign(mergedRoles, sanitizeRoles(data.roles[k])); });
+        chipRoles = mergedRoles;
         if(data.settings) chipNameLinks = sanitizeNameLinks(data.settings.nameLinks);
         chipCloudStatus = 'ok';
         saveChipCache();
@@ -863,7 +937,9 @@
     const jobs = Array.from(monthKeys).map(function(k){
       const list = chipEntries.filter(function(e){ return e.date.slice(0,7) === k; })
         .map(function(e){ return {id:e.id, date:e.date, name:e.name, count:e.count}; });
-      return list.length ? C.saveChipMonth(k, list) : C.deleteChipMonth(k);
+      const roles = {};
+      Object.keys(chipRoles).forEach(function(d){ if(d.slice(0,7) === k) roles[d] = chipRoles[d]; });
+      return (list.length || Object.keys(roles).length) ? C.saveChipMonth(k, list, roles) : C.deleteChipMonth(k);
     });
     return Promise.all(jobs).then(function(){ chipCloudStatus = 'ok'; return true; })
       .catch(function(err){
@@ -872,6 +948,103 @@
         showToast('クラウドへの保存に失敗しました（この端末には保存済み）');
         return false;
       });
+  }
+
+  // ---------- 船長・VIP ----------
+  // 直近（指定日以前、なければ最新）の保存済み船長・VIP。日付を切り替えたときに前回の選択を引き継ぐために使う
+  function chipCarryRoles(date){
+    const ds = Object.keys(chipRoles).sort();
+    let pick = null;
+    ds.forEach(function(d){ if(d <= date) pick = d; });
+    if(!pick && ds.length) pick = ds[ds.length - 1];
+    return pick ? chipRoles[pick] : null;
+  }
+  function chipEffectiveRoles(date){
+    if(state.chipRoleDraft) return {captain: state.chipRoleDraft.captain || '', vip: state.chipRoleDraft.vip || ''};
+    const r = chipRoles[date] || chipCarryRoles(date) || {};
+    return {captain: r.captain || '', vip: r.vip || ''};
+  }
+  function setChipRolesForDate(date, r){
+    const c = (r.captain || '').trim(), v = (r.vip || '').trim();
+    if(c || v){ chipRoles[date] = {}; if(c) chipRoles[date].captain = c; if(v) chipRoles[date].vip = v; }
+    else delete chipRoles[date];
+    state.chipRoleDraft = null;
+  }
+  function chipRegDate(){ return state.chipImportDate || todayStr(); }
+
+  // 手入力の候補：直近10回の乗船回数が多い順 → 累計 → 五十音
+  function chipDonorNames(){
+    const recent = new Set(chipDates().slice(-10));
+    const recentCnt = {}, totalCnt = {};
+    chipEntries.forEach(function(e){
+      totalCnt[e.name] = (totalCnt[e.name] || 0) + 1;
+      if(recent.has(e.date)) recentCnt[e.name] = (recentCnt[e.name] || 0) + 1;
+    });
+    const names = new Set(Object.keys(totalCnt));
+    Object.keys(chipNameLinks).forEach(function(k){ names.add(k); });
+    return Array.from(names).sort(function(a, b){
+      return (recentCnt[b] || 0) - (recentCnt[a] || 0) || (totalCnt[b] || 0) - (totalCnt[a] || 0) || a.localeCompare(b, 'ja');
+    });
+  }
+  // 文字の正規化（全角半角・大文字小文字・カタカナ/ひらがなの違いを吸収）
+  function chipNorm(str){
+    return String(str || '').normalize('NFKC').toLowerCase().replace(/[\u30a1-\u30f6]/g, function(c){
+      return String.fromCharCode(c.charCodeAt(0) - 0x60);
+    }).replace(/\s+/g, '');
+  }
+  // 日付ごとの手入力の下書き（日付を切り替えても保持）。まだ無ければ登録済みデータから作る
+  function chipManualList(date){
+    if(!state.chipManualDraft[date]){
+      state.chipManualDraft[date] = chipEntries.filter(function(e){ return e.date === date; })
+        .sort(function(a, b){ return b.count - a.count || a.name.localeCompare(b.name, 'ja'); })
+        .map(function(e){ return {name: e.name, count: e.count}; });
+    }
+    return state.chipManualDraft[date];
+  }
+  function chipPrevDate(date){
+    const ds = chipDates().filter(function(d){ return d < date; });
+    return ds.length ? ds[ds.length - 1] : null;
+  }
+  function chipSuggestHtml(date){
+    const list = chipManualList(date);
+    const inList = new Set(list.map(function(r){ return r.name; }));
+    const q = chipNorm(state.chipSearch);
+    let cands = chipDonorNames().filter(function(n){ return !inList.has(n); });
+    const html = [];
+    if(q){
+      const scored = [];
+      cands.forEach(function(n, idx){
+        const names = [n].concat(chipNameLinks[n] || []);
+        let best = -1, via = '';
+        names.forEach(function(x, k){
+          const nx = chipNorm(x);
+          const sc = nx.indexOf(q) === 0 ? 0 : (nx.indexOf(q) > 0 ? 1 : -1);
+          if(sc >= 0 && (best < 0 || sc < best)){ best = sc; via = k > 0 ? x : ''; }
+        });
+        if(best >= 0) scored.push({n: n, sc: best, idx: idx, via: via});
+      });
+      scored.sort(function(a, b){ return a.sc - b.sc || a.idx - b.idx; });
+      scored.slice(0, 12).forEach(function(x){
+        html.push(`<div class="at-pill" data-action="chipManualAdd" data-val="${escapeHtml(x.n)}">${escapeHtml(x.n)}${x.via ? `<small style="opacity:.6;margin-left:4px;">旧:${escapeHtml(x.via)}</small>` : ''}</div>`);
+      });
+      const typed = String(state.chipSearch || '').trim();
+      const resolved = resolveChipName(typed);
+      const exists = chipDonorNames().indexOf(resolved) >= 0 || inList.has(resolved);
+      if(typed && !exists){
+        html.push(`<div class="at-pill" style="border-style:dashed;color:var(--cyan);border-color:var(--cyan);" data-action="chipManualAdd" data-val="${escapeHtml(resolved)}">＋「${escapeHtml(resolved)}」を新しいメンバーとして追加</div>`);
+      }
+      if(!html.length) return '<div class="at-hint">候補がありません。</div>';
+    } else {
+      const limit = state.chipShowAll ? cands.length : 18;
+      cands.slice(0, limit).forEach(function(n){
+        html.push(`<div class="at-pill" data-action="chipManualAdd" data-val="${escapeHtml(n)}">${escapeHtml(n)}</div>`);
+      });
+      if(!state.chipShowAll && cands.length > limit){
+        html.push(`<div class="at-pill" style="color:var(--cyan);border-color:var(--cyan);" data-action="chipManualShowAll">すべて表示（残り${cands.length - limit}人）</div>`);
+      }
+      if(!html.length) return '<div class="at-hint">追加できるメンバーはいません。上の入力欄に名前を入れて新しいメンバーを追加できます。</div>';
+    }
+    return `<div class="at-sugs">${html.join('')}</div>`;
   }
 
   // 「名前,枚数,名前,枚数,…」（カンマ・読点・改行区切り）を解析
@@ -1975,8 +2148,38 @@
     return (state.chipDate && dates.indexOf(state.chipDate) >= 0) ? state.chipDate : chipLatestDate();
   }
 
+  // 船長・VIP（順位欄の上に表示）。r = {captain:[{name,days?}], vip:[...]}
+  function chipRolesHtml(r){
+    const parts = [];
+    [['captain', '⚓', '船長'], ['vip', '⭐', 'VIP']].forEach(function(def){
+      const arr = r[def[0]] || [];
+      if(!arr.length) return;
+      parts.push(`<div class="at-role"><div class="at-role-label">${def[1]} ${def[2]}</div><div class="at-role-name">${arr.map(function(x){
+        return escapeHtml(x.name) + (x.days != null ? `<small>（${x.days}日）</small>` : '');
+      }).join('、')}</div></div>`);
+    });
+    return parts.length ? `<div class="at-roles">${parts.join('')}</div>` : '';
+  }
+  function chipRolesForDay(date){
+    const r = chipRoles[date] || {};
+    return {captain: r.captain ? [{name: r.captain}] : [], vip: r.vip ? [{name: r.vip}] : []};
+  }
+  function chipRolesInRange(start, end){
+    const out = {captain: [], vip: []};
+    ['captain', 'vip'].forEach(function(k){
+      const map = {};
+      Object.keys(chipRoles).forEach(function(d){
+        if(d < start || d > end || !chipRoles[d][k]) return;
+        map[chipRoles[d][k]] = (map[chipRoles[d][k]] || 0) + 1;
+      });
+      out[k] = Object.keys(map).map(function(n){ return {name: n, days: map[n]}; })
+        .sort(function(a, b){ return b.days - a.days || a.name.localeCompare(b.name, 'ja'); });
+    });
+    return out;
+  }
+
   // 画像保存の対象（ランキング本体）。日別・期間集計で共通
-  function chipCaptureBlock(rangeLabel, heroLabel, list, showDays, emptyMsg){
+  function chipCaptureBlock(rangeLabel, heroLabel, list, showDays, emptyMsg, rolesHtml){
     return `
       <div class="at-chip-capture" id="at-chip-capture">
         <div class="at-chip-cap-head">
@@ -1989,8 +2192,9 @@
             `<span>乗船 <b>${list.length}</b>人</span>`,
             `<span>寄付 <b>${list.filter(function(x){ return x.value > 0; }).length}</b>人</span>`
           ])}
+          ${rolesHtml || ''}
           ${chipRowsHtml(list, showDays)}`
-        : chipEmpty(emptyMsg)}
+        : `${rolesHtml || ''}${chipEmpty(emptyMsg)}`}
       </div>`;
   }
 
@@ -2011,7 +2215,7 @@
       <div style="text-align:right;margin-bottom:10px;">
         <div class="at-btn at-btn-gold at-btn-sm" data-action="captureChips">📸 画像として保存</div>
       </div>
-      ${chipCaptureBlock(fmtDateJP(date), 'この日の合計寄付チップ', list, false, 'この日の寄付データはありません。')}
+      ${chipCaptureBlock(fmtDateJP(date), 'この日の合計寄付チップ', list, false, 'この日の寄付データはありません。', chipRolesHtml(chipRolesForDay(date)))}
     `;
   }
 
@@ -2035,7 +2239,7 @@
       <div style="text-align:right;margin-bottom:10px;">
         <div class="at-btn at-btn-gold at-btn-sm" data-action="captureChips">📸 画像として保存</div>
       </div>
-      ${chipCaptureBlock(rangeLabel, '期間中の合計寄付チップ', list, true, 'この期間の寄付データはありません。')}
+      ${chipCaptureBlock(rangeLabel, '期間中の合計寄付チップ', list, true, 'この期間の寄付データはありません。', chipRolesHtml(chipRolesInRange(b.start, b.end)))}
     `;
   }
 
@@ -2185,12 +2389,8 @@
     const dayEntries = manageDate ? chipDayList(manageDate) : [];
     const entryRows = manageDate ? chipEntries.filter(function(e){ return e.date === manageDate; })
       .sort(function(a,b){ return b.count - a.count || a.name.localeCompare(b.name, 'ja'); }) : [];
-    const secImport = `
+    const pasteForm = `
         <div class="at-panel-desc" style="margin-bottom:10px;">「名前,枚数,名前,枚数,…」の形式で貼り付けてください（改行区切りも可）。<br>例：<code>えいせい,3,にゃんこ船長,3,モジュ,2,大蒜マン,1,ぐんじ,0</code><br>枚数は0〜3です（0＝寄付せず乗船）。<br>同じ日付・同じ名前のデータがある場合は、枚数を上書きします。</div>
-        <div class="at-field">
-          <label class="at-label">日付</label>
-          <input type="date" class="at-input" data-chip-date="import" value="${escapeHtml(importDate)}">
-        </div>
         <div class="at-field">
           <label class="at-label">貼り付け</label>
           <textarea class="at-input" rows="5" data-chip-paste placeholder="えいせい,3,にゃんこ船長,3,モジュ,2,大蒜マン,1,ぐんじ,0">${escapeHtml(state.chipPaste)}</textarea>
@@ -2205,7 +2405,7 @@
         <div class="at-btn at-btn-gold at-btn-full" data-action="chipImport">この内容で取り込む</div>
         ${(function(){
           const r = state.chipImportResult;
-          if(!r) return '';
+          if(!r || r.manual) return '';
           const lines = [`<b style="color:var(--cyan);">${escapeHtml(fmtSlash(r.date))}：${r.people}人・合計${fmtInt(r.total)}枚を登録しました</b>`];
           lines.push('登録した内容：' + r.registered.map(function(x){ return escapeHtml(x[0]) + ' ' + x[1]; }).join('、'));
           if(r.converted.length) lines.push('旧名から変換：' + r.converted.map(function(c){ return escapeHtml(c.from) + ' → ' + escapeHtml(c.to); }).join('、'));
@@ -2214,6 +2414,7 @@
           return `<div class="at-note" style="margin-top:10px;">${lines.join('<br>')}</div>`;
         })()}
     `;
+    const secImport = chipRegisterTop(importDate) + (state.chipRegMode === 'manual' ? chipManualForm(importDate) : pasteForm);
     const secManage = `
         ${dates.length ? `
           <div class="at-field">
@@ -2222,7 +2423,7 @@
               ${dates.map(function(d){ return `<option value="${d}" ${d===manageDate?'selected':''}>${escapeHtml(fmtDateJP(d))}</option>`; }).join('')}
             </select>
           </div>
-          <div class="at-hint" style="margin-bottom:8px;">${dayEntries.length}人・合計 <b style="color:var(--gold-soft);">${fmtInt(sumValues(dayEntries))}</b> 枚</div>
+          <div class="at-hint" style="margin-bottom:8px;">${dayEntries.length}人・合計 <b style="color:var(--gold-soft);">${fmtInt(sumValues(dayEntries))}</b> 枚${(chipRoles[manageDate] && (chipRoles[manageDate].captain || chipRoles[manageDate].vip)) ? `<br>船長：${escapeHtml(chipRoles[manageDate].captain || '未設定')}　VIP：${escapeHtml(chipRoles[manageDate].vip || '未設定')}` : ''}</div>
           ${entryRows.map(function(e){
             return `<div class="at-chip-entry">
               <div class="at-chip-entry-name">${escapeHtml(e.name)}</div>
@@ -2252,6 +2453,116 @@
     return {import: secImport, manage: secManage, names: secNames};
   }
 
+  // ---- カレンダー（参考サイトと同じ：日付ボタンを押すとその下にカレンダーが開く） ----
+  function chipCalendar(viewMonth, selected){
+    const parts = viewMonth.split('-').map(Number);
+    const y = parts[0], m = parts[1];
+    const firstDow = new Date(y, m-1, 1).getDay();
+    const dim = new Date(y, m, 0).getDate();
+    const has = new Set(chipDates());
+    let cells = '';
+    for(let i = 0; i < firstDow; i++) cells += '<div class="at-cal-cell at-cal-empty"></div>';
+    for(let d = 1; d <= dim; d++){
+      const ds = y + '-' + pad2(m) + '-' + pad2(d);
+      cells += `<div class="at-cal-cell ${ds===selected?'sel':''} ${has.has(ds)?'has':''}" data-action="chipCalPick" data-val="${ds}">${d}</div>`;
+    }
+    const wd = ['日','月','火','水','木','金','土'].map(function(w){ return `<div class="at-cal-wd">${w}</div>`; }).join('');
+    return `<div class="at-cal-panel">
+      <div class="at-cal-header">
+        <div class="at-btn at-btn-ghost at-btn-sm" data-action="chipCalPrev">‹</div>
+        <div class="at-cal-month">${y}年${m}月</div>
+        <div class="at-btn at-btn-ghost at-btn-sm" data-action="chipCalNext">›</div>
+      </div>
+      <div class="at-cal-grid">${wd}${cells}</div>
+      <div class="at-hint" style="margin-top:8px;">●付きの日は登録済みです</div>
+    </div>`;
+  }
+
+  function chipRoleOptionNames(role, current){
+    const seen = new Set(), out = [];
+    const add = function(n){ if(n && !seen.has(n)){ seen.add(n); out.push(n); } };
+    add(current);
+    const ds = Object.keys(chipRoles).sort().reverse();
+    ds.forEach(function(d){ add(chipRoles[d][role]); });
+    ds.forEach(function(d){ add(chipRoles[d][role === 'captain' ? 'vip' : 'captain']); });
+    chipDonorNames().forEach(add);
+    return out;
+  }
+  function chipRoleSelect(role, label, icon, date){
+    const cur = chipEffectiveRoles(date)[role];
+    return `<div class="at-field">
+      <label class="at-label">${icon} ${label}</label>
+      <select class="at-select" data-chip-role="${role}">
+        <option value="">未設定</option>
+        ${chipRoleOptionNames(role, cur).map(function(n){ return `<option value="${escapeHtml(n)}" ${n===cur?'selected':''}>${escapeHtml(n)}</option>`; }).join('')}
+        <option value="__new__">✏️ 新しい名前を入力…</option>
+      </select>
+    </div>`;
+  }
+
+  // 日付・船長/VIP（手入力と一括貼り付けで共通）・モード切替
+  function chipRegisterTop(date){
+    const open = state.chipCalOpen;
+    const viewMonth = state.chipCalMonth || date.slice(0,7);
+    return `
+      <div class="at-field">
+        <label class="at-label">日付</label>
+        <div class="at-date-btn ${open?'active':''}" data-action="chipCalToggle">${escapeHtml(fmtDateJP(date))}</div>
+        ${open ? chipCalendar(viewMonth, date) : ''}
+      </div>
+      <div class="at-subbox">
+        <div class="at-subbox-title">⚓ 船長・⭐ VIP（寄付なしの特別枠）</div>
+        <div class="at-hint" style="margin:0 0 10px;">手入力・一括貼り付けの両方で共通です。日付を切り替えても、その日に保存済みでなければ前回の選択を引き継ぎます。登録時に一緒に保存されます。</div>
+        <div class="at-row2">
+          ${chipRoleSelect('captain', '船長', '⚓', date)}
+          ${chipRoleSelect('vip', 'VIP', '⭐', date)}
+        </div>
+        <div class="at-btn at-btn-ghost at-btn-full" data-action="chipSaveRoles">💾 この日の船長・VIPだけ保存</div>
+      </div>
+      <div class="at-modebtns">
+        <div class="at-modebtn ${state.chipRegMode==='manual'?'active':''}" data-action="chipRegMode" data-val="manual">✋ 手入力</div>
+        <div class="at-modebtn ${state.chipRegMode==='paste'?'active':''}" data-action="chipRegMode" data-val="paste">📋 一括貼り付け</div>
+      </div>`;
+  }
+
+  function chipManualForm(date){
+    const list = chipManualList(date);
+    const total = list.reduce(function(a, r){ return a + r.count; }, 0);
+    const prev = chipPrevDate(date);
+    return `
+      <div class="at-hint" style="margin:0 0 10px;">メンバーをタップして追加し、＋／−で枚数（0〜3）を調整します。0枚は「寄付せず乗船」です。数字をタップすると 0→1→2→3 と切り替わります。</div>
+      <div class="at-field">
+        <label class="at-label">メンバーを追加（名前を入力すると候補が絞り込まれます）</label>
+        <input class="at-input" id="at-chip-search" data-chip-search autocomplete="off" placeholder="例：えい" value="${escapeHtml(state.chipSearch)}">
+        <div id="at-chip-suggest" style="margin-top:10px;">${chipSuggestHtml(date)}</div>
+      </div>
+      ${prev ? `<div class="at-btn at-btn-ghost at-btn-sm" style="margin-bottom:12px;" data-action="chipManualLoadPrev">📋 前回（${escapeHtml(fmtMD(prev))}）の乗船メンバーを追加</div>` : ''}
+      <div class="at-subbox" style="margin-bottom:12px;">
+        <div class="at-subbox-title">この日の乗船メンバー（${list.length}人・合計${fmtInt(total)}枚）</div>
+        ${list.length ? list.map(function(r){
+          const nm = escapeHtml(r.name);
+          return `<div class="at-man-row">
+            <div class="at-man-name">${nm}</div>
+            <div class="at-stepper">
+              <div class="at-step-btn ${r.count<=0?'dis':''}" data-action="chipManualStep" data-val="${nm}" data-delta="-1">−</div>
+              <div class="at-step-val ${r.count>0?'on':''}" data-action="chipManualCycle" data-val="${nm}">${r.count}</div>
+              <div class="at-step-btn ${r.count>=CHIP_MAX_PER_DAY?'dis':''}" data-action="chipManualStep" data-val="${nm}" data-delta="1">＋</div>
+            </div>
+            <div class="at-man-del" data-action="chipManualRemove" data-val="${nm}" title="外す">✕</div>
+          </div>`;
+        }).join('') : '<div class="at-hint">まだ誰も追加されていません。上の候補をタップしてください。</div>'}
+      </div>
+      <div class="at-btn at-btn-gold at-btn-full" data-action="chipManualRegister">この内容で登録（${list.length}人）</div>
+      <div class="at-hint" style="margin-top:8px;">登録すると、この日の既存データはこの一覧の内容に置き換わります。</div>
+      <div class="at-btn at-btn-ghost at-btn-sm" style="margin-top:10px;" data-action="chipManualClear">一覧をすべて外す</div>
+      ${(function(){
+        const r = state.chipImportResult;
+        if(!r || r.manual !== true) return '';
+        return `<div class="at-note" style="margin-top:10px;"><b style="color:var(--cyan);">${escapeHtml(fmtSlash(r.date))}：${r.people}人・合計${fmtInt(r.total)}枚を登録しました</b></div>`;
+      })()}
+    `;
+  }
+
   function adminSection(key, title, body){
     const open = !!state.adminOpen[key];
     return `<div class="at-collapse">
@@ -2272,7 +2583,7 @@
         </div>
         <div class="at-chip-status ${chipCloudStatus==='error'?'err':''}" style="margin:8px 0 0;">${chipCloudStatus==='error' ? '⚠ クラウドに接続できません' : (chipCloudStatus==='ok' ? '☁️ 変更は全員に共有されます' : '☁️ 同期中…')}</div>
       </div>
-      ${adminSection('import', '✏️ 一括取り込み', p.import)}
+      ${adminSection('import', '✏️ 登録（手入力・一括貼り付け）', p.import)}
       ${adminSection('manage', '🗂 登録済みデータの確認・削除', p.manage)}
       ${adminSection('names', '👥 名前の管理（改名の紐づけ）', p.names)}
     `;
@@ -2442,10 +2753,12 @@
     // モーダル内のスクロール位置を保ったまま再描画する
     const m = document.querySelector('.at-modal');
     const top = m ? m.scrollTop : 0;
+    const sy = window.scrollY || 0;
     const hs = {};
     document.querySelectorAll('[data-preserve-scroll]').forEach(function(el){ hs[el.id] = el.scrollLeft; });
     renderCore();
     Object.keys(hs).forEach(function(id){ const el = document.getElementById(id); if(el) el.scrollLeft = hs[id]; });
+    if(Math.abs((window.scrollY || 0) - sy) > 1) window.scrollTo(0, sy);
     if(top){ const n = document.querySelector('.at-modal'); if(n) n.scrollTop = top; }
   }
   function renderCore(){
@@ -2473,6 +2786,107 @@
         state.chipSub = (val === 'range') ? 'range' : 'day';
         render();
         return true;
+      case 'chipRegMode':
+        state.chipRegMode = (val === 'manual') ? 'manual' : 'paste';
+        try{ localStorage.setItem('at2_chipregmode_v1', state.chipRegMode); }catch(err){}
+        render();
+        return true;
+      case 'chipCalToggle':
+        state.chipCalOpen = !state.chipCalOpen;
+        state.chipCalMonth = chipRegDate().slice(0,7);
+        render();
+        return true;
+      case 'chipCalPrev':
+      case 'chipCalNext': {
+        const parts = (state.chipCalMonth || chipRegDate().slice(0,7)).split('-').map(Number);
+        let y = parts[0], m = parts[1] + (action === 'chipCalNext' ? 1 : -1);
+        if(m < 1){ m = 12; y--; } else if(m > 12){ m = 1; y++; }
+        state.chipCalMonth = y + '-' + pad2(m);
+        render();
+        return true;
+      }
+      case 'chipCalPick':
+        state.chipImportDate = val;
+        state.chipCalOpen = false;
+        state.chipSearch = '';
+        // その日に保存済みの船長・VIPがあればそれを表示。無ければ（選択中／前回の）内容を引き継ぐ
+        if(chipRoles[val]) state.chipRoleDraft = null;
+        render();
+        return true;
+      case 'chipSaveRoles': {
+        const date = chipRegDate();
+        setChipRolesForDate(date, chipEffectiveRoles(date));
+        render();
+        commitChipMonths([date.slice(0,7)]).then(function(){ showToast(`${fmtSlash(date)}の船長・VIPを保存しました`); });
+        return true;
+      }
+      case 'chipManualAdd': {
+        const list = chipManualList(chipRegDate());
+        const name = resolveChipName(val);
+        if(name && !list.some(function(r){ return r.name === name; })) list.push({name: name, count: 0});
+        state.chipSearch = '';
+        render();
+        return true;
+      }
+      case 'chipManualShowAll':
+        state.chipShowAll = true;
+        render();
+        return true;
+      case 'chipManualLoadPrev': {
+        const date = chipRegDate();
+        const prev = chipPrevDate(date);
+        if(!prev) return true;
+        const list = chipManualList(date);
+        let added = 0;
+        chipDayList(prev).forEach(function(it){
+          if(!list.some(function(r){ return r.name === it.name; })){ list.push({name: it.name, count: 0}); added++; }
+        });
+        render();
+        showToast(added ? `${added}人を追加しました` : '追加できるメンバーはいませんでした');
+        return true;
+      }
+      case 'chipManualStep':
+      case 'chipManualCycle': {
+        const list = chipManualList(chipRegDate());
+        const row = list.filter(function(r){ return r.name === val; })[0];
+        if(!row) return true;
+        if(action === 'chipManualCycle') row.count = (row.count + 1) % (CHIP_MAX_PER_DAY + 1);
+        else row.count = Math.max(0, Math.min(CHIP_MAX_PER_DAY, row.count + (Number(el.getAttribute('data-delta')) || 0)));
+        render();
+        return true;
+      }
+      case 'chipManualRemove': {
+        const date = chipRegDate();
+        state.chipManualDraft[date] = chipManualList(date).filter(function(r){ return r.name !== val; });
+        render();
+        return true;
+      }
+      case 'chipManualClear':
+        state.chipManualDraft[chipRegDate()] = [];
+        render();
+        return true;
+      case 'chipManualRegister': {
+        const date = chipRegDate();
+        if(!isValidYMD(date)){ showToast('日付を選択してください'); return true; }
+        const list = chipManualList(date);
+        if(!list.length){ showToast('メンバーを追加してください'); return true; }
+        chipEntries = chipEntries.filter(function(e){ return e.date !== date; });
+        let total = 0;
+        list.forEach(function(r){
+          total += r.count;
+          chipEntries.push({id: uid(), date: date, name: r.name, count: r.count});
+        });
+        setChipRolesForDate(date, chipEffectiveRoles(date));
+        delete state.chipManualDraft[date];
+        state.chipDate = date;
+        state.chipManageDate = date;
+        state.chipImportResult = {manual: true, date: date, people: list.length, total: total};
+        render();
+        commitChipMonths([date.slice(0,7)]).then(function(){
+          showToast(`${fmtSlash(date)}：${list.length}人・合計${fmtInt(total)}枚を登録しました`);
+        });
+        return true;
+      }
       case 'chipPickDate':
         state.chipDate = val;
         render();
@@ -2538,6 +2952,8 @@
           if(idx >= 0) chipEntries[idx] = {id: chipEntries[idx].id, date: date, name: name, count: count};
           else chipEntries.push({id: uid(), date: date, name: name, count: count});
         });
+        setChipRolesForDate(date, chipEffectiveRoles(date));
+        delete state.chipManualDraft[date];
         state.chipPaste = '';
         state.chipDate = date;       // 取り込んだ日をそのまま表示できるように
         state.chipManageDate = date;
@@ -2566,6 +2982,8 @@
         if(!n) return true;
         if(confirm(`${fmtDateJP(val)}の寄付データ（${n}件）をすべて削除します。\nこの操作は取り消せません。よろしいですか？`)){
           chipEntries = chipEntries.filter(function(e){ return e.date !== val; });
+          delete chipRoles[val];
+          delete state.chipManualDraft[val];
           state.chipManageDate = null;
           render();
           commitChipMonths([val.slice(0,7)]).then(function(){ showToast('削除しました'); });
@@ -2618,6 +3036,20 @@
       render();
       return;
     }
+    const roleKind = t.getAttribute && t.getAttribute('data-chip-role');
+    if(roleKind){
+      const date = chipRegDate();
+      let name = t.value;
+      if(name === '__new__'){
+        const input = prompt(roleKind === 'captain' ? '船長の名前を入力してください' : 'VIPの名前を入力してください', '');
+        name = resolveChipName((input || '').trim());
+      }
+      const cur = chipEffectiveRoles(date);
+      cur[roleKind] = name || '';
+      state.chipRoleDraft = cur;
+      render();
+      return;
+    }
     if(t.getAttribute && t.hasAttribute('data-chip-manage')){
       state.chipManageDate = t.value;
       render();
@@ -2625,6 +3057,12 @@
   });
   document.addEventListener('input', function(e){
     if(e.target.getAttribute && e.target.hasAttribute('data-chip-paste')) state.chipPaste = e.target.value;
+    if(e.target.getAttribute && e.target.hasAttribute('data-chip-search')){
+      // 入力中は再描画せず、候補の部分だけ更新する（入力欄のフォーカスを保つ）
+      state.chipSearch = e.target.value;
+      const box = document.getElementById('at-chip-suggest');
+      if(box) box.innerHTML = chipSuggestHtml(chipRegDate());
+    }
   });
   // 入力欄からフォーカスが外れたら、保留していたクラウド更新を反映
   document.addEventListener('focusout', function(){
