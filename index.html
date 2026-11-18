@@ -309,6 +309,36 @@
     background:var(--bg-panel2);border:1px solid var(--border);color:var(--text-dim);cursor:pointer;white-space:nowrap;user-select:none;
   }
   .at-pill:hover{border-color:var(--gold);color:var(--gold-soft);}
+  /* ---------- 日付ピル / 2列ランキング / 履歴 ---------- */
+  .at-pill.active{background:rgba(212,175,55,.14);border-color:var(--gold);color:var(--gold-soft);}
+  .at-pill.mono{font-family:'JetBrains Mono',monospace;}
+  .at-chip-cols{display:grid;grid-template-columns:1fr 1fr;gap:0 12px;align-items:start;}
+  .at-chip-col{min-width:0;}
+  .at-chip-cols .at-chip-row{gap:7px;padding:7px 1px;}
+  .at-chip-cols .at-chip-rank{flex:0 0 24px;height:24px;border-radius:6px;font-size:11.5px;}
+  .at-chip-cols .at-chip-name{font-size:12.5px;}
+  .at-chip-cols .at-chip-val{font-size:13.5px;}
+  .at-chip-cols .at-chip-val small{display:none;}
+  .at-chip-cols .at-chip-days{font-size:9px;}
+  .at-name-link{cursor:pointer;text-underline-offset:3px;text-decoration:underline dotted rgba(232,207,122,.4);}
+  .at-chip-capture .at-name-link{text-decoration:none;}
+  .at-chip-main[data-action]{cursor:pointer;}
+  .at-chip-main[data-action]:active{opacity:.6;}
+  .at-chip-note{font-size:11px;color:var(--text-faint);margin:0 0 10px;line-height:1.6;}
+  .at-hist-head{display:grid;grid-template-columns:1fr 56px 1fr;gap:8px;padding:6px 4px;font-size:11px;color:var(--text-faint);border-bottom:1px solid var(--border);}
+  .at-hist-row{display:grid;grid-template-columns:1fr 56px 1fr;gap:8px;align-items:center;padding:8px 4px;border-bottom:1px solid var(--border-soft);font-size:13px;}
+  .at-hist-row:last-child{border-bottom:none;}
+  .at-hist-row.none{color:var(--text-faint);}
+  .at-hist-date{font-family:'JetBrains Mono',monospace;}
+  .at-hist-val{font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--gold-soft);text-align:right;}
+  .at-hist-val small{font-size:10.5px;color:var(--text-faint);margin-left:2px;}
+  .at-hist-row.none .at-hist-val{color:var(--text-faint);font-weight:400;}
+  .at-badge{display:inline-flex;align-items:center;justify-content:center;min-width:26px;height:26px;padding:0 6px;border-radius:7px;
+    font-family:'JetBrains Mono',monospace;font-weight:700;font-size:12.5px;background:var(--bg-panel3);color:var(--text-dim);}
+  .at-badge.r1{background:linear-gradient(160deg,#f4d874,var(--gold));color:#2a2205;}
+  .at-badge.r2{background:linear-gradient(160deg,#e4e9ee,#b9c2cf);color:#232830;}
+  .at-badge.r3{background:linear-gradient(160deg,#e0a070,#c17a4a);color:#2a1608;}
+  .at-hist-rankcell{text-align:center;}
   @media (max-width:400px){ .at-chip-hero-val{font-size:34px;} .at-chip-nav .at-btn{padding:6px 8px;} }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
@@ -528,8 +558,10 @@
   let build = loadJSON('at2_build_v3', DEFAULT_BUILD);
   let state = {
     // メインはチップ寄贈。スキル選択（個人ページ）はログイン済みの場合のみ開ける
-    tab: (function(){ var t = localStorage.getItem('at2_tab_v1'); return ((t==='arrows' || t==='admin') && isAuthed()) ? t : 'chips'; })(),
+    tab: (function(){ var t = localStorage.getItem('at2_tab_v1'); return (t==='admin' || (t==='arrows' && isAuthed())) ? t : 'chips'; })(),
     loginError:'',
+    chipHistory:null,         // 履歴を表示中の名前（null＝ランキング表示）
+    chipScrollY:0,
     adminOpen:{import:true, manage:false, names:false},
     settingsOpen:false,
     infoOpen:false,
@@ -913,9 +945,10 @@
   function saveBuild(){ saveJSON('at2_build_v3', build); }
   function setTab(id){
     state.tab = id;
+    state.chipHistory = null;
     state.loginError = '';
     // ログイン前の「ゲート画面」は保存せず、次回はチップ寄贈から開く
-    localStorage.setItem('at2_tab_v1', ((id === 'arrows' || id === 'admin') && !isAuthed()) ? 'chips' : id);
+    localStorage.setItem('at2_tab_v1', (id === 'arrows' && !isAuthed()) ? 'chips' : id);
     render();
   }
 
@@ -1890,20 +1923,27 @@
     `;
   }
 
+  // 縦2列：例）30人なら左に1〜15位、右に16〜30位（奇数のときは左が1人多い）
   function chipRowsHtml(list, showDays){
     if(!list.length) return '';
     const max = Math.max(1, list[0].value);
-    return list.map(function(it){
+    const row = function(it){
       const w = Math.max(2, Math.round(it.value / max * 100));
       return `<div class="at-chip-row ${it.rank<=3 ? 'r'+it.rank : ''}">
         <div class="at-chip-rank">${it.rank}</div>
-        <div class="at-chip-main">
-          <div class="at-chip-name">${escapeHtml(it.name)}</div>
+        <div class="at-chip-main" data-action="chipHistory" data-val="${escapeHtml(it.name)}">
+          <div class="at-chip-name at-name-link">${escapeHtml(it.name)}</div>
           <div class="at-chip-bar"><span style="width:${w}%"></span></div>
         </div>
         <div class="at-chip-val">${fmtInt(it.value)}<small>枚</small>${showDays ? `<div class="at-chip-days">${it.days}日</div>` : ''}</div>
       </div>`;
-    }).join('');
+    };
+    const half = Math.ceil(list.length / 2);
+    const left = list.slice(0, half), right = list.slice(half);
+    return `<div class="at-chip-cols">
+      <div class="at-chip-col">${left.map(row).join('')}</div>
+      <div class="at-chip-col">${right.map(row).join('')}</div>
+    </div>`;
   }
   function chipHero(label, total, metas){
     return `<div class="at-chip-hero">
@@ -1916,33 +1956,59 @@
     return `<div class="at-empty"><div class="at-empty-icon">📭</div>${msg}</div>`;
   }
 
-  function chipsDayView(){
-    const date = state.chipDate || chipLatestDate();
-    const list = chipDayList(date);
-    const total = sumValues(list);
+  function fmtMD(str){
+    const d = parseYMD(str);
+    if(!d) return str || '';
+    const p2 = function(n){ return ('0' + n).slice(-2); };
+    return p2(d.getMonth()+1) + '/' + p2(d.getDate()) + '(' + '日月火水木金土'[d.getDay()] + ')';
+  }
+  function chipSelectedDate(){
+    const dates = chipDates();
+    return (state.chipDate && dates.indexOf(state.chipDate) >= 0) ? state.chipDate : chipLatestDate();
+  }
+
+  // 画像保存の対象（ランキング本体）。日別・期間集計で共通
+  function chipCaptureBlock(rangeLabel, heroLabel, list, showDays, emptyMsg){
     return `
-      <div class="at-chip-nav">
-        <div class="at-btn at-btn-ghost at-btn-sm" data-action="chipDayShift" data-val="-1">‹ 前日</div>
-        <input type="date" class="at-input" data-chip-date="day" value="${escapeHtml(date)}">
-        <div class="at-btn at-btn-ghost at-btn-sm" data-action="chipDayShift" data-val="1">翌日 ›</div>
+      <div class="at-chip-capture" id="at-chip-capture">
+        <div class="at-chip-cap-head">
+          <div class="at-chip-cap-eyebrow">CLAN AIRSHIP — CHIP DONATION</div>
+          <div class="at-chip-cap-title">飛行艇チップ 寄贈ランキング</div>
+          <div class="at-chip-cap-range">${escapeHtml(rangeLabel)}</div>
+        </div>
+        ${list.length ? `
+          ${chipHero(heroLabel, sumValues(list), [
+            `<span>寄贈人数 <b>${list.length}</b>人</span>`
+          ])}
+          ${chipRowsHtml(list, showDays)}`
+        : chipEmpty(emptyMsg)}
+      </div>`;
+  }
+
+  function chipsDayView(){
+    const dates = chipDates().slice().reverse();
+    if(!dates.length){
+      return chipEmpty('まだ寄贈データが登録されていません。<br>右上の「⚙ 管理者」からデータを取り込んでください。');
+    }
+    const date = chipSelectedDate();
+    const list = chipDayList(date);
+    return `
+      <div class="at-pillrow" id="at-chip-date-pills" data-preserve-scroll>
+        ${dates.map(function(d){
+          return `<div class="at-pill mono ${d===date?'active':''}" data-action="chipPickDate" data-val="${d}">${fmtMD(d)}</div>`;
+        }).join('')}
       </div>
-      <div class="at-chip-datejp">${escapeHtml(fmtDateJP(date))}${date!==chipLatestDate() ? `　<span style="color:var(--cyan);cursor:pointer;" data-action="chipDayLatest">最新の日付へ</span>` : ''}</div>
-      ${list.length ? `
-        ${chipHero('この日の合計寄贈チップ', total, [
-          `<span>寄贈人数 <b>${list.length}</b>人</span>`
-        ])}
-        <div class="at-subbox" style="margin-bottom:0;">
-          <div class="at-subbox-title">🏆 寄贈ランキング（枚数順）</div>
-          ${chipRowsHtml(list, false)}
-        </div>`
-      : chipEmpty(chipEntries.length ? 'この日の寄贈データはありません。<br>日付を変更してください。' : 'まだ寄贈データが登録されていません。<br>右上の「⚙ 管理者」からログインし、データを取り込んでください。')}
+      <div class="at-chip-note">日付を選ぶとその日のランキングを表示します。名前をタップすると日ごとの寄贈枚数の履歴を見られます。</div>
+      <div style="text-align:right;margin-bottom:10px;">
+        <div class="at-btn at-btn-gold at-btn-sm" data-action="captureChips">📸 画像として保存</div>
+      </div>
+      ${chipCaptureBlock(fmtDateJP(date), 'この日の合計寄贈チップ', list, false, 'この日の寄贈データはありません。')}
     `;
   }
 
   function chipsRangeView(){
     const b = chipRangeBounds();
     const list = chipRangeList(b.start, b.end);
-    const total = sumValues(list);
     const rangeLabel = `${fmtSlash(b.start)} 〜 ${fmtSlash(b.end)}`;
     return `
       <div class="at-chip-range">
@@ -1956,26 +2022,52 @@
         <div class="at-pill" data-action="chipRangePreset" data-val="month">今月</div>
         <div class="at-pill" data-action="chipRangePreset" data-val="all">全期間</div>
       </div>
+      <div class="at-chip-note">名前をタップすると日ごとの寄贈枚数の履歴を見られます。</div>
       <div style="text-align:right;margin-bottom:10px;">
         <div class="at-btn at-btn-gold at-btn-sm" data-action="captureChips">📸 画像として保存</div>
       </div>
-      <div class="at-chip-capture" id="at-chip-capture">
-        <div class="at-chip-cap-head">
-          <div class="at-chip-cap-eyebrow">CLAN AIRSHIP — CHIP DONATION</div>
-          <div class="at-chip-cap-title">飛行艇チップ 寄贈ランキング</div>
-          <div class="at-chip-cap-range">${escapeHtml(rangeLabel)}</div>
-        </div>
-        ${list.length ? `
-          ${chipHero('期間中の合計寄贈チップ', total, [
-            `<span>寄贈人数 <b>${list.length}</b>人</span>`
-          ])}
-          ${chipRowsHtml(list, true)}`
-        : chipEmpty('この期間の寄贈データはありません。')}
-      </div>
+      ${chipCaptureBlock(rangeLabel, '期間中の合計寄贈チップ', list, true, 'この期間の寄贈データはありません。')}
     `;
   }
 
+  // 名前をタップしたときの「日ごとの寄贈枚数の履歴」（モーダルではなくページ内表示）
+  function chipHistoryPanel(){
+    const name = state.chipHistory;
+    const dates = chipDates().slice().reverse();
+    const mine = {};
+    chipEntries.forEach(function(e){ if(e.name === name) mine[e.date] = (mine[e.date] || 0) + e.count; });
+    const days = Object.keys(mine).length;
+    const total = Object.keys(mine).reduce(function(a, d){ return a + mine[d]; }, 0);
+    const formers = chipNameLinks[name] || [];
+    const rows = dates.map(function(d){
+      const v = mine[d];
+      let rankCell = 'ー';
+      if(v != null){
+        const rec = chipDayList(d).filter(function(x){ return x.name === name; })[0];
+        if(rec) rankCell = `<span class="at-badge ${rec.rank<=3 ? 'r'+rec.rank : ''}">${rec.rank}</span>`;
+      }
+      return `<div class="at-hist-row ${v==null?'none':''}">
+        <div class="at-hist-date">${fmtMD(d)}</div>
+        <div class="at-hist-rankcell">${rankCell}</div>
+        <div class="at-hist-val">${v != null ? fmtInt(v) + '<small>枚</small>' : 'ー'}</div>
+      </div>`;
+    }).join('');
+    return `
+    <div class="at-panel">
+      <div style="margin-bottom:12px;"><div class="at-pillbtn" style="display:inline-flex;" data-action="chipHistoryBack">‹ ランキングへ戻る</div></div>
+      <div class="at-panel-title" style="margin-bottom:6px;">📜 ${escapeHtml(name)} の履歴</div>
+      ${formers.length ? `<div class="at-hint" style="margin:0 0 10px;">旧名：${formers.map(escapeHtml).join('、')}</div>` : ''}
+      ${chipHero('累計寄贈チップ', total, [
+        `<span>寄贈した日 <b>${days}</b>日</span>`,
+        `<span>1日平均 <b>${days ? fmtInt(Math.round(total / days)) : 0}</b>枚</span>`
+      ])}
+      <div class="at-hist-head"><div>日付</div><div style="text-align:center;">順位</div><div style="text-align:right;">寄贈枚数</div></div>
+      ${rows || '<div class="at-hint" style="padding:16px 0;text-align:center;">データがありません</div>'}
+    </div>`;
+  }
+
   function chipsTool(){
+    if(state.chipHistory) return chipHistoryPanel();
     const sub = state.chipSub;
     const statusText = chipCloudStatus === 'error'
       ? '⚠ クラウドに接続できません（この端末に保存されたデータを表示しています）'
@@ -1993,7 +2085,7 @@
     </div>`;
   }
 
-  // 「期間集計」の画像を保存（スマホは共有シート、PCはダウンロード）
+  // ランキング画像を保存（スマホは共有シート、PCはダウンロード）
   async function captureChipsAsImage(){
     if(typeof html2canvas === 'undefined'){ showToast('画像化ライブラリの読み込みに失敗しました'); return; }
     const el = document.getElementById('at-chip-capture');
@@ -2005,7 +2097,7 @@
     }catch(err){ console.error(err); }
     if(!canvas){ showToast('画像の生成に失敗しました'); return; }
     const b = chipRangeBounds();
-    const filename = `chip_donation_${b.start}_${b.end}.png`;
+    const filename = state.chipSub === 'day' ? `chip_donation_${chipSelectedDate()}.png` : `chip_donation_${b.start}_${b.end}.png`;
     await new Promise(function(resolve){
       canvas.toBlob(async function(blob){
         if(!blob){ showToast('画像の生成に失敗しました'); resolve(); return; }
@@ -2162,13 +2254,12 @@
   }
 
   function adminPage(){
-    if(!isAuthed()) return lockGate('管理者パネル', 'チップ寄贈データの登録・編集を行うページです。');
     const p = chipsSettingsBody();
     return `
       <div class="at-collapse">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
           <div class="at-panel-title" style="margin:0;padding:0;border:none;">⚙ 管理者パネル（チップ寄贈）</div>
-          <div class="at-btn at-btn-ghost at-btn-sm" data-action="logout">ログアウト</div>
+          ${isAuthed() ? '<div class="at-btn at-btn-ghost at-btn-sm" data-action="logout">個人ページをログアウト</div>' : ''}
         </div>
         <div class="at-chip-status ${chipCloudStatus==='error'?'err':''}" style="margin:8px 0 0;">${chipCloudStatus==='error' ? '⚠ クラウドに接続できません' : (chipCloudStatus==='ok' ? '☁️ 変更は全員に共有されます' : '☁️ 同期中…')}</div>
       </div>
@@ -2342,7 +2433,10 @@
     // モーダル内のスクロール位置を保ったまま再描画する
     const m = document.querySelector('.at-modal');
     const top = m ? m.scrollTop : 0;
+    const hs = {};
+    document.querySelectorAll('[data-preserve-scroll]').forEach(function(el){ hs[el.id] = el.scrollLeft; });
     renderCore();
+    Object.keys(hs).forEach(function(id){ const el = document.getElementById(id); if(el) el.scrollLeft = hs[id]; });
     if(top){ const n = document.querySelector('.at-modal'); if(n) n.scrollTop = top; }
   }
   function renderCore(){
@@ -2369,6 +2463,21 @@
       case 'setChipSub':
         state.chipSub = (val === 'range') ? 'range' : 'day';
         render();
+        return true;
+      case 'chipPickDate':
+        state.chipDate = val;
+        render();
+        return true;
+      case 'chipHistory':
+        state.chipScrollY = window.scrollY || 0;
+        state.chipHistory = val;
+        render();
+        window.scrollTo(0, 0);
+        return true;
+      case 'chipHistoryBack':
+        state.chipHistory = null;
+        render();
+        window.scrollTo(0, state.chipScrollY || 0);
         return true;
       case 'chipDayShift':
         state.chipDate = shiftDate(state.chipDate || chipLatestDate(), Number(val) || 0);
