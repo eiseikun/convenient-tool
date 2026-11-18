@@ -275,6 +275,40 @@
   .at-chip-entry-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .at-chip-entry-val{font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--gold-soft);}
   textarea.at-input{resize:vertical;font-family:'JetBrains Mono','Noto Sans JP',monospace;line-height:1.6;}
+  /* ---------- 個人ページ / 管理者ページ（別ページ形式） ---------- */
+  .at-toprow{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-top:6px;margin-bottom:14px;}
+  .at-toprow-right{display:flex;gap:6px;margin-left:auto;}
+  .at-pillbtn{
+    display:inline-flex;align-items:center;gap:4px;padding:7px 13px;border-radius:999px;
+    font-size:12px;font-weight:700;background:var(--bg-panel);border:1px solid var(--border);
+    color:var(--text-dim);cursor:pointer;letter-spacing:.02em;user-select:none;
+  }
+  .at-pillbtn:hover{border-color:var(--gold-dark);}
+  .at-pillbtn.active{border-color:var(--gold);color:var(--gold-soft);background:rgba(212,175,55,.12);}
+  .at-pillbtn.ghost{padding:7px 11px;opacity:.55;}
+  .at-pillbtn.ghost:hover{opacity:1;}
+  .at-pillbtn.ghost.active{opacity:1;border-color:var(--cyan);color:var(--cyan);background:rgba(69,196,176,.12);}
+  .at-personalbar{
+    display:flex;align-items:center;justify-content:space-between;gap:8px;
+    margin:0 0 16px;padding:8px 10px;background:var(--bg-panel);
+    border:1px solid var(--border);border-left:3px solid var(--gold-dark);border-radius:12px;
+  }
+  .at-personalbar-label{font-size:12.5px;font-weight:700;color:var(--gold-soft);letter-spacing:.04em;}
+  .at-lockgate{text-align:center;padding:26px 14px;}
+  .at-lock-icon{font-size:28px;margin-bottom:10px;opacity:.7;}
+  .at-lockgate .at-panel-title{justify-content:center;border-bottom:none;padding-bottom:0;margin-bottom:6px;}
+  .at-err{color:var(--down);font-size:12px;margin-top:8px;}
+  .at-collapse{background:var(--bg-panel);border:1px solid var(--border);border-radius:14px;padding:14px 16px;margin-bottom:14px;}
+  .at-collapse-toggle{cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between;
+    font-family:'Shippori Mincho',serif;font-weight:800;font-size:15px;color:var(--gold-soft);}
+  .at-chevron{color:var(--text-faint);font-size:12px;}
+  .at-collapse-body{margin-top:12px;}
+  .at-pillrow{display:flex;gap:8px;overflow-x:auto;padding-bottom:6px;margin-bottom:12px;-webkit-overflow-scrolling:touch;}
+  .at-pill{
+    flex:0 0 auto;padding:8px 14px;border-radius:999px;font-size:12.5px;font-weight:600;
+    background:var(--bg-panel2);border:1px solid var(--border);color:var(--text-dim);cursor:pointer;white-space:nowrap;user-select:none;
+  }
+  .at-pill:hover{border-color:var(--gold);color:var(--gold-soft);}
   @media (max-width:400px){ .at-chip-hero-val{font-size:34px;} .at-chip-nav .at-btn{padding:6px 8px;} }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
@@ -460,6 +494,28 @@
     compareCandA:'diagonal', compareCandB:'none'
   };
 
+  // ---------- 個人ページ用ログイン ----------
+  // 注意：静的サイト上のフロント側だけのロックです（ソースを見られると突破できる簡易的なもの）。
+  const AUTH_KEY = 'at2_auth_v1';
+  const AUTH_HASH = 6893166603367429;
+  function pwHash(str, seed){
+    seed = seed || 0;
+    let h1 = 0xdeadbeef ^ seed, h2 = 0x41c6ce57 ^ seed;
+    for(let i = 0, ch; i < str.length; i++){
+      ch = str.charCodeAt(i);
+      h1 = Math.imul(h1 ^ ch, 2654435761);
+      h2 = Math.imul(h2 ^ ch, 1597334677);
+    }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507);
+    h1 ^= Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507);
+    h2 ^= Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+    return 4294967296 * (2097151 & h2) + (h1 >>> 0);
+  }
+  function isAuthed(){
+    try{ return localStorage.getItem(AUTH_KEY) === String(AUTH_HASH); }catch(e){ return false; }
+  }
+
   const TOOLS = [
     {id:'arrows', label:'スキル選択', icon:'🏹'},
     {id:'chips', label:'チップ寄贈', icon:'🛩️'},
@@ -471,7 +527,10 @@
   saveJSON('at2_settings_v3', settings);
   let build = loadJSON('at2_build_v3', DEFAULT_BUILD);
   let state = {
-    tab: (function(){ var t = localStorage.getItem('at2_tab_v1'); return (t==='arrows' || t==='chips') ? t : 'arrows'; })(),
+    // メインはチップ寄贈。スキル選択（個人ページ）はログイン済みの場合のみ開ける
+    tab: (function(){ var t = localStorage.getItem('at2_tab_v1'); return ((t==='arrows' || t==='admin') && isAuthed()) ? t : 'chips'; })(),
+    loginError:'',
+    adminOpen:{import:true, manage:false, names:false},
     settingsOpen:false,
     infoOpen:false,
     presetOpen:false,
@@ -852,7 +911,13 @@
 
   function saveSettings(){ saveJSON('at2_settings_v3', settings); }
   function saveBuild(){ saveJSON('at2_build_v3', build); }
-  function setTab(id){ state.tab = id; localStorage.setItem('at2_tab_v1', id); render(); }
+  function setTab(id){
+    state.tab = id;
+    state.loginError = '';
+    // ログイン前の「ゲート画面」は保存せず、次回はチップ寄贈から開く
+    localStorage.setItem('at2_tab_v1', ((id === 'arrows' || id === 'admin') && !isAuthed()) ? 'chips' : id);
+    render();
+  }
 
 
   function showToast(msg){
@@ -1301,11 +1366,39 @@
     </div>`;
   }
 
+  // 右上のピルボタン（🔒＝個人ページ／⚙ 管理者）。個人ページ・管理者ページでは左に「戻る」を出す
   function tabsBar(){
-    return `<div class="at-tabs">${TOOLS.map(t=>`
-      <div class="at-tab ${state.tab===t.id?'active':''}" data-action="setTab" data-val="${t.id}">
-        ${t.icon} ${t.label}${t.comingSoon?'<span class="soon">近日公開</span>':''}
-      </div>`).join('')}</div>`;
+    const t = state.tab;
+    const back = t !== 'chips' ? `<div class="at-pillbtn" data-action="setTab" data-val="chips">‹ チップ寄贈へ</div>` : '';
+    let bar = `<div class="at-toprow">${back}
+      <div class="at-toprow-right">
+        <div class="at-pillbtn ghost ${t==='arrows'?'active':''}" data-action="setTab" data-val="arrows" title="個人ページ">🔒</div>
+        <div class="at-pillbtn ${t==='admin'?'active':''}" data-action="setTab" data-val="admin">⚙ 管理者</div>
+      </div>
+    </div>`;
+    if(t === 'arrows' && isAuthed()){
+      bar += `<div class="at-personalbar">
+        <div class="at-personalbar-label">🔒 個人ページ（スキル選択）</div>
+        <div class="at-btn at-btn-ghost at-btn-sm" data-action="logout">ログアウト</div>
+      </div>`;
+    }
+    return bar;
+  }
+
+  // ログイン画面（モーダルではなくページ内に表示）
+  function lockGate(title, note){
+    return `
+    <div class="at-panel at-lockgate">
+      <div class="at-lock-icon">🔒</div>
+      <div class="at-panel-title">${title}</div>
+      <div class="at-hint" style="margin:0 0 14px;">${note}</div>
+      <div class="at-field" style="text-align:left;max-width:260px;margin:0 auto 10px;">
+        <label class="at-label">パスワード</label>
+        <input class="at-input" type="password" id="at-login-pw" autocomplete="current-password" placeholder="パスワードを入力">
+      </div>
+      <div class="at-btn at-btn-gold" style="display:inline-block;" data-action="doLogin">ログイン</div>
+      ${state.loginError ? `<div class="at-err">${escapeHtml(state.loginError)}</div>` : ''}
+    </div>`;
   }
 
   function checkRow(key, label, sub, on, badge){
@@ -1842,7 +1935,7 @@
           <div class="at-subbox-title">🏆 寄贈ランキング（枚数順）</div>
           ${chipRowsHtml(list, false)}
         </div>`
-      : chipEmpty(chipEntries.length ? 'この日の寄贈データはありません。<br>日付を変更してください。' : 'まだ寄贈データが登録されていません。<br>右上の ⚙️ から管理者としてログインし、データを取り込んでください。')}
+      : chipEmpty(chipEntries.length ? 'この日の寄贈データはありません。<br>日付を変更してください。' : 'まだ寄贈データが登録されていません。<br>右上の「⚙ 管理者」からログインし、データを取り込んでください。')}
     `;
   }
 
@@ -1857,11 +1950,11 @@
         <span>〜</span>
         <input type="date" class="at-input" data-chip-date="rangeEnd" value="${escapeHtml(b.end)}">
       </div>
-      <div class="at-chip-presets">
-        <div class="at-btn at-btn-ghost at-btn-sm" data-action="chipRangePreset" data-val="7">直近7日</div>
-        <div class="at-btn at-btn-ghost at-btn-sm" data-action="chipRangePreset" data-val="30">直近30日</div>
-        <div class="at-btn at-btn-ghost at-btn-sm" data-action="chipRangePreset" data-val="month">今月</div>
-        <div class="at-btn at-btn-ghost at-btn-sm" data-action="chipRangePreset" data-val="all">全期間</div>
+      <div class="at-pillrow">
+        <div class="at-pill" data-action="chipRangePreset" data-val="7">直近7日</div>
+        <div class="at-pill" data-action="chipRangePreset" data-val="30">直近30日</div>
+        <div class="at-pill" data-action="chipRangePreset" data-val="month">今月</div>
+        <div class="at-pill" data-action="chipRangePreset" data-val="all">全期間</div>
       </div>
       <div style="text-align:right;margin-bottom:10px;">
         <div class="at-btn at-btn-gold at-btn-sm" data-action="captureChips">📸 画像として保存</div>
@@ -1890,7 +1983,7 @@
     return `
     <div class="at-panel">
       <div class="at-panel-title">🛩️ クラン飛行艇 チップ寄贈</div>
-      <div class="at-panel-desc">クラン飛行艇に寄贈されたチップの枚数を、日別・期間別に確認できます。データの登録は右上の ⚙️（管理者画面）から行います。</div>
+      <div class="at-panel-desc">クラン飛行艇に寄贈されたチップの枚数を、日別・期間別に確認できます。データの登録は右上の「⚙ 管理者」から行います。</div>
       <div class="at-chip-status ${chipCloudStatus==='error'?'err':''}">${statusText}</div>
       <div class="at-modebtns">
         <div class="at-modebtn ${sub==='day'?'active':''}" data-action="setChipSub" data-val="day">📅 日別</div>
@@ -1991,9 +2084,7 @@
     const dayEntries = manageDate ? chipDayList(manageDate) : [];
     const entryRows = manageDate ? chipEntries.filter(function(e){ return e.date === manageDate; })
       .sort(function(a,b){ return b.count - a.count || a.name.localeCompare(b.name, 'ja'); }) : [];
-    return `
-      <div class="at-subbox">
-        <div class="at-subbox-title">✏️ 一括取り込み</div>
+    const secImport = `
         <div class="at-panel-desc" style="margin-bottom:10px;">「名前,枚数,名前,枚数,…」の形式で貼り付けてください（改行区切りも可）。<br>例：<code>えいせい,3,にゃんこ船長,3,モジュ,2,大蒜マン,1</code><br>同じ日付・同じ名前のデータがある場合は、枚数を上書きします。</div>
         <div class="at-field">
           <label class="at-label">日付</label>
@@ -2021,10 +2112,8 @@
           if(r.badTokens.length) lines.push(`<span style="color:var(--down);">読み取れなかった項目：${r.badTokens.map(escapeHtml).join('、')}</span>`);
           return `<div class="at-note" style="margin-top:10px;">${lines.join('<br>')}</div>`;
         })()}
-      </div>
-
-      <div class="at-subbox">
-        <div class="at-subbox-title">🗂 登録済みデータの確認・削除</div>
+    `;
+    const secManage = `
         ${dates.length ? `
           <div class="at-field">
             <label class="at-label">日付を選択（${dates.length}日分）</label>
@@ -2042,10 +2131,8 @@
           }).join('')}
           <div class="at-btn at-btn-danger at-btn-full" style="margin-top:12px;" data-action="chipDeleteDay" data-val="${manageDate}">この日のデータを全て削除</div>
         ` : `<div class="at-hint">登録されたデータはありません。</div>`}
-      </div>
-
-      <div class="at-subbox">
-        <div class="at-subbox-title">👥 名前の管理（改名の紐づけ）</div>
+    `;
+    const secNames = `
         <div class="at-panel-desc" style="margin-bottom:10px;">名前を変えた人は「改名」を押してください。過去の記録は新しい名前にまとめられ、旧名は下に表示されます。以降、旧名で取り込んでも新しい名前として登録されます。紐づけたくない旧名は「×」で外せます（過去の記録は変わりません）。</div>
         ${chipKnownNames().length ? chipKnownNames().map(function(n){
           const fm = chipNameLinks[n] || [];
@@ -2060,18 +2147,44 @@
             </div>` : ''}
           </div>`;
         }).join('') : `<div class="at-hint">まだ名前が登録されていません。</div>`}
+    `;
+    return {import: secImport, manage: secManage, names: secNames};
+  }
+
+  function adminSection(key, title, body){
+    const open = !!state.adminOpen[key];
+    return `<div class="at-collapse">
+      <div class="at-collapse-toggle" data-action="toggleAdminSec" data-val="${key}">
+        <span>${title}</span><span class="at-chevron">${open ? '▾' : '▸'}</span>
       </div>
+      ${open ? `<div class="at-collapse-body">${body}</div>` : ''}
+    </div>`;
+  }
+
+  function adminPage(){
+    if(!isAuthed()) return lockGate('管理者パネル', 'チップ寄贈データの登録・編集を行うページです。');
+    const p = chipsSettingsBody();
+    return `
+      <div class="at-collapse">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+          <div class="at-panel-title" style="margin:0;padding:0;border:none;">⚙ 管理者パネル（チップ寄贈）</div>
+          <div class="at-btn at-btn-ghost at-btn-sm" data-action="logout">ログアウト</div>
+        </div>
+        <div class="at-chip-status ${chipCloudStatus==='error'?'err':''}" style="margin:8px 0 0;">${chipCloudStatus==='error' ? '⚠ クラウドに接続できません' : (chipCloudStatus==='ok' ? '☁️ 変更は全員に共有されます' : '☁️ 同期中…')}</div>
+      </div>
+      ${adminSection('import', '✏️ 一括取り込み', p.import)}
+      ${adminSection('manage', '🗂 登録済みデータの確認・削除', p.manage)}
+      ${adminSection('names', '👥 名前の管理（改名の紐づけ）', p.names)}
     `;
   }
 
   const SETTINGS_BY_TAB = {
     arrows: { title:'⚙️ スキル選択 詳細設定', body: arrowsSettingsBody },
-    chips: { title:'⚙️ チップ寄贈 管理者画面', body: chipsSettingsBody },
   };
 
   function settingsModal(){
     if(!state.settingsOpen) return '';
-    const cfg = SETTINGS_BY_TAB[state.tab] || SETTINGS_BY_TAB.arrows;
+    const cfg = SETTINGS_BY_TAB.arrows;
     return `
     <div class="at-modal-backdrop" data-action="closeSettingsBackdrop">
       <div class="at-modal">
@@ -2234,12 +2347,13 @@
   }
   function renderCore(){
     // 計算式ガイド(📐)とプリセット(💾)はスキル選択ページ専用
-    ['.at-info-btn', '.at-preset-btn'].forEach(function(sel){
+    ['.at-gear', '.at-info-btn', '.at-preset-btn'].forEach(function(sel){
       const b = document.querySelector(sel);
-      if(b) b.style.display = state.tab === 'arrows' ? '' : 'none';
+      if(b) b.style.display = (state.tab === 'arrows' && isAuthed()) ? '' : 'none';
     });
     let body = tabsBar();
-    if(state.tab==='arrows') body += arrowsTool();
+    if(state.tab==='arrows') body += isAuthed() ? arrowsTool() : lockGate('個人ページ', 'ここは自分専用のページです。');
+    else if(state.tab==='admin') body += adminPage();
     else body += chipsTool();
 
     app.innerHTML = `
@@ -2410,6 +2524,23 @@
   document.body.insertAdjacentHTML('afterbegin', `<div class="at-info-btn" data-action="openInfo" title="計算式ガイド">📐</div>`);
   document.body.insertAdjacentHTML('afterbegin', `<div class="at-preset-btn" data-action="openPreset" title="プリセット">💾</div>`);
 
+  function tryLogin(){
+    const input = document.getElementById('at-login-pw');
+    const pw = input ? input.value : '';
+    if(pwHash(pw) === AUTH_HASH){
+      try{ localStorage.setItem(AUTH_KEY, String(AUTH_HASH)); }catch(err){}
+      state.loginError = '';
+      setTab(state.tab);   // 開こうとしていたページ（個人ページ／管理者）をそのまま表示
+      window.scrollTo(0,0);
+    } else {
+      state.loginError = 'パスワードが違います';
+      render();
+    }
+  }
+  document.addEventListener('keydown', function(e){
+    if(e.key === 'Enter' && e.target && e.target.id === 'at-login-pw'){ e.preventDefault(); tryLogin(); }
+  });
+
   document.addEventListener('click', function(e){
     const el = e.target.closest('[data-action]');
     if(!el) return;
@@ -2418,10 +2549,18 @@
 
     if(handleChipAction(action, val, el)) return;
 
+    if(action==='doLogin'){ tryLogin(); return; }
+    if(action==='toggleAdminSec'){ state.adminOpen[val] = !state.adminOpen[val]; render(); return; }
+    if(action==='logout'){
+      try{ localStorage.removeItem(AUTH_KEY); }catch(err){}
+      state.settingsOpen = false; state.infoOpen = false; state.presetOpen = false;
+      setTab('chips'); window.scrollTo(0,0); return;
+    }
     if(action==='setTab'){
       const tool = TOOLS.find(t=>t.id===val);
       if(tool && tool.comingSoon){ setTab(val); return; }
       setTab(val);
+      window.scrollTo(0,0);
       return;
     }
     if(action==='toggleBuild'){
