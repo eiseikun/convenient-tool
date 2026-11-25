@@ -884,7 +884,7 @@
       });
     });
     render();
-    commitChipMonths(months).then(function(){ return saveChipLinks(); }).then(function(){
+    Promise.all([commitChipMonths(months), saveChipLinks()]).then(function(){
       showToast(`「${oldName}」を「${newName}」に変更しました${merged ? `（同じ日の記録${merged}件を合計）` : ''}`);
     });
   }
@@ -3126,7 +3126,7 @@
         chipMembers = chipMembers.filter(function(n){ return n !== val; });
         chipHidden = chipHidden.filter(function(n){ return n !== val; });
         render();
-        commitChipMonths(months).then(function(){ return saveChipLinks(); }).then(function(){
+        Promise.all([commitChipMonths(months), saveChipLinks()]).then(function(){
           showToast(`「${val}」と記録データ${dateList.length}件を削除しました`);
         });
         return true;
