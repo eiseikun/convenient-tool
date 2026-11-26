@@ -605,6 +605,8 @@
     chipHistory:null,         // 履歴を表示中の名前（null＝ランキング表示）
     chipRegMode:(function(){ try{ return localStorage.getItem('at2_chipregmode_v1') === 'manual' ? 'manual' : 'paste'; }catch(e){ return 'paste'; } })(),
     chipRoleDraft:null,       // 船長・VIPの選択（null＝保存済み／前回の内容をそのまま使う）。日付を替えても保持
+    chipManualBase:{},        // 下書き作成時点の登録データの署名 {日付: 文字列}
+    chipManualDirty:{},       // 手で編集された下書き {日付: true}
     chipManualDraft:{},       // 手入力の下書き {日付: [{name,count}]}
     chipSearch:'',
     chipShowAll:false,
@@ -863,6 +865,17 @@
       }
     });
     chipEntries = out;
+    // 編集中の下書きにも新しい名前を反映（旧名のまま登録されてしまうのを防ぐ）
+    Object.keys(state.chipManualDraft).forEach(function(d){
+      const seen = new Map();
+      const nl = [];
+      state.chipManualDraft[d].forEach(function(r){
+        const nm = r.name === oldName ? newName : r.name;
+        if(seen.has(nm)){ const t = nl[seen.get(nm)]; t.count = Math.min(CHIP_MAX_PER_DAY, t.count + r.count); }
+        else { seen.set(nm, nl.length); nl.push({name: nm, count: r.count}); }
+      });
+      state.chipManualDraft[d] = nl;
+    });
     const links = chipNameLinks;
     // 新しい名前が誰かの旧名として登録されていた場合は紐づけを外す
     Object.keys(links).forEach(function(cur){ links[cur] = links[cur].filter(function(n){ return n !== newName; }); });
@@ -1023,14 +1036,23 @@
     }).replace(/\s+/g, '');
   }
   // 日付ごとの手入力の下書き（日付を切り替えても保持）。まだ無ければ登録済みデータから作る
+  function chipDaySig(date){
+    return chipEntries.filter(function(e){ return e.date === date; })
+      .map(function(e){ return e.name + ':' + e.count; }).sort().join('|');
+  }
   function chipManualList(date){
-    if(!state.chipManualDraft[date]){
+    // 編集前の下書きは、登録データ（クラウド同期・改名など）が変わったら作り直す
+    const sig = chipDaySig(date);
+    if(!state.chipManualDraft[date] || (!state.chipManualDirty[date] && state.chipManualBase[date] !== sig)){
       state.chipManualDraft[date] = chipEntries.filter(function(e){ return e.date === date; })
         .sort(function(a, b){ return b.count - a.count || a.name.localeCompare(b.name, 'ja'); })
         .map(function(e){ return {name: e.name, count: e.count}; });
+      state.chipManualBase[date] = sig;
+      state.chipManualDirty[date] = false;
     }
     return state.chipManualDraft[date];
   }
+  function chipManualMarkDirty(date){ state.chipManualDirty[date] = true; }
   function chipPrevDate(date){
     const ds = chipDates().filter(function(d){ return d < date; });
     return ds.length ? ds[ds.length - 1] : null;
@@ -2883,6 +2905,7 @@
       }
       case 'chipManualAdd': {
         const list = chipManualList(chipRegDate());
+        chipManualMarkDirty(chipRegDate());
         const name = resolveChipName(val);
         if(name && !list.some(function(r){ return r.name === name; })) list.push({name: name, count: 0});
         state.chipSearch = '';
@@ -2898,6 +2921,7 @@
         const prev = chipPrevDate(date);
         if(!prev) return true;
         const list = chipManualList(date);
+        chipManualMarkDirty(date);
         let added = 0;
         chipDayList(prev).forEach(function(it){
           if(!list.some(function(r){ return r.name === it.name; })){ list.push({name: it.name, count: 0}); added++; }
@@ -2911,6 +2935,7 @@
         const list = chipManualList(chipRegDate());
         const row = list.filter(function(r){ return r.name === val; })[0];
         if(!row) return true;
+        chipManualMarkDirty(chipRegDate());
         if(action === 'chipManualCycle') row.count = (row.count + 1) % (CHIP_MAX_PER_DAY + 1);
         else row.count = Math.max(0, Math.min(CHIP_MAX_PER_DAY, row.count + (Number(el.getAttribute('data-delta')) || 0)));
         render();
@@ -2919,11 +2944,13 @@
       case 'chipManualRemove': {
         const date = chipRegDate();
         state.chipManualDraft[date] = chipManualList(date).filter(function(r){ return r.name !== val; });
+        chipManualMarkDirty(date);
         render();
         return true;
       }
       case 'chipManualClear':
         state.chipManualDraft[chipRegDate()] = [];
+        chipManualMarkDirty(chipRegDate());
         render();
         return true;
       case 'chipManualRegister': {
@@ -2938,7 +2965,7 @@
           chipEntries.push({id: uid(), date: date, name: r.name, count: r.count});
         });
         setChipRolesForDate(date, chipEffectiveRoles(date));
-        delete state.chipManualDraft[date];
+        delete state.chipManualDraft[date]; delete state.chipManualDirty[date]; delete state.chipManualBase[date];
         state.chipDate = date;
         state.chipManageDate = date;
         state.chipImportResult = {manual: true, date: date, people: list.length, total: total};
@@ -3014,7 +3041,7 @@
           else chipEntries.push({id: uid(), date: date, name: name, count: count});
         });
         setChipRolesForDate(date, chipEffectiveRoles(date));
-        delete state.chipManualDraft[date];
+        delete state.chipManualDraft[date]; delete state.chipManualDirty[date]; delete state.chipManualBase[date];
         state.chipPaste = '';
         state.chipDate = date;       // 取り込んだ日をそのまま表示できるように
         state.chipManageDate = date;
@@ -3044,7 +3071,7 @@
         if(confirm(`${fmtDateJP(val)}の寄付データ（${n}件）をすべて削除します。\nこの操作は取り消せません。よろしいですか？`)){
           chipEntries = chipEntries.filter(function(e){ return e.date !== val; });
           delete chipRoles[val];
-          delete state.chipManualDraft[val];
+          delete state.chipManualDraft[val]; delete state.chipManualDirty[val]; delete state.chipManualBase[val];
           state.chipManageDate = null;
           render();
           commitChipMonths([val.slice(0,7)]).then(function(){ showToast('削除しました'); });
